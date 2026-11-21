@@ -188,7 +188,21 @@ def test_valid_production_settings_are_accepted() -> None:
             "postgresql+psycopg2://propflow:"
             f"{secrets.token_urlsafe(16)}@db:5432/propflow_db"
         ),
+        encryption_key=secrets.token_urlsafe(44),
     )
 
     assert settings.environment == "production"
     assert settings.api_v1_prefix == "/api/v1"
+
+
+def test_production_requires_encryption_key() -> None:
+    with pytest.raises(ValueError, match="ENCRYPTION_KEY"):
+        make_settings(
+            environment="production",
+            debug=False,
+            cors_allowed_origins=["https://app.propflow.example"],
+            database_url=(
+                "postgresql+psycopg2://propflow:"
+                f"{secrets.token_urlsafe(16)}@db:5432/propflow_db"
+            ),
+        )

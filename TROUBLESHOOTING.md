@@ -77,7 +77,7 @@ After adding the one-click conversation endpoint, 5 new integration tests were a
 **Symptom:**
 AI assistant responses displayed literal `**` symbols instead of bold text:
 ```
-**RERA Registration No.:** PR/GJ/AHMEDABAD/AHMEDABAD CITY/AUDA/RAA12345/010126
+**RERA Registration No.:** PR/GJ/HYDERABAD/HYDERABAD CITY/AUDA/RAA12345/010126
 ```
 
 **Root Cause:**

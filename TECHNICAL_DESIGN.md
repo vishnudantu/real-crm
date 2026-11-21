@@ -1,6 +1,6 @@
-# Keylo — Technical Design Document
+# PropFlow — Technical Design Document
 
-**Project URL:** https://github.com/MahanteshPatil1214/KEYLO  
+**Project URL:** https://github.com/vishnudantu/real-crm  
 **Live app:** Not deployed (local/Docker Compose only — see `deployment.md`)  
 **Status:** Assignment submission — modular monolith MVP  
 **Problem Statement:** PS3 — Real estate developer's AI lead-response and site-visit booking assistant
@@ -24,7 +24,7 @@ Every assumption below is labelled **[ASSUMPTION]** and is not a claim about the
 
 | Item | Value |
 |------|-------|
-| GitHub repository | https://github.com/MahanteshPatil1214/KEYLO |
+| GitHub repository | https://github.com/vishnudantu/real-crm |
 | Live app | Not deployed (run locally via `docker compose up` or manual setup) |
 | API docs (local) | http://localhost:8000/docs |
 | Frontend (local) | http://localhost:5173 |
@@ -35,7 +35,7 @@ Every assumption below is labelled **[ASSUMPTION]** and is not a claim about the
 
 ### 2.1 Architectural Style: Modular Monolith
 
-Keylo is implemented as a **modular monolith**:
+PropFlow is implemented as a **modular monolith**:
 
 - One FastAPI application serving all REST endpoints
 - One relational database (SQLite in dev, PostgreSQL in production/Docker)
@@ -315,7 +315,7 @@ From PROJECT.md Section 4.2 and subsequent scoping decisions:
 - **229 backend tests** (Pytest): unit, integration, security, AI assistant unit tests with mocked provider.
 - **Frontend**: TypeScript strict typecheck + Vite production build.
 - **E2E verification**: Playwright headless browser tests covering buyer portal buttons and user flows:
-  - "Chat with Keylo Concierge" button starts a new conversation from the Project Info page.
+  - "Chat with PropFlow Concierge" button starts a new conversation from the Project Info page.
   - "Continue Conversation" button opens an existing conversation thread.
   - Quick inquiry chips (Amenities, Configurations, etc.) populate the chat input field.
   - Navigation buttons (Overview, Conversations, Profile) route to the correct pages.

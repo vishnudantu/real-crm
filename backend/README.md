@@ -1,6 +1,6 @@
-# Keylo Backend
+# PropFlow Backend
 
-Backend for Keylo, an AI-powered real-estate lead-response and site-visit
+Backend for PropFlow, an AI-powered real-estate lead-response and site-visit
 booking assistant. The architecture is a FastAPI modular monolith with
 PostgreSQL, SQLAlchemy 2.0, Alembic, Pydantic v2, Argon2, and JWT.
 
@@ -53,7 +53,7 @@ architecture, API examples, and security notes.
 ## Quick start (Windows PowerShell)
 
 ```powershell
-cd E:\KEYLO\backend
+cd E:\PROPFLOW\backend
 
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -88,8 +88,8 @@ Authentication-related variables:
 | --- | --- | --- |
 | `JWT_SECRET_KEY` | Symmetric JWT signing secret, at least 32 characters | Required |
 | `JWT_ALGORITHM` | `HS256`, `HS384`, or `HS512` | `HS256` |
-| `JWT_ISSUER` | Validated `iss` claim | `keylo-api` |
-| `JWT_AUDIENCE` | Validated `aud` claim | `keylo-clients` |
+| `JWT_ISSUER` | Validated `iss` claim | `propflow-api` |
+| `JWT_AUDIENCE` | Validated `aud` claim | `propflow-clients` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Access-token lifetime | `30` |
 | `GROQ_API_KEY` | Groq API key (optional in dev/test; masked `SecretStr`) | `None` |
 | `GROQ_MODEL` | Chat completion model | `openai/gpt-oss-120b` |
@@ -139,7 +139,7 @@ python -m scripts.create_admin
 
 The script prompts for email, full name, and password, applies the same password
 policy as registration, and refuses duplicate emails. For automated deployment,
-set `KEYLO_ADMIN_EMAIL`, `KEYLO_ADMIN_FULL_NAME`, and `KEYLO_ADMIN_PASSWORD` in a
+set `PROPFLOW_ADMIN_EMAIL`, `PROPFLOW_ADMIN_FULL_NAME`, and `PROPFLOW_ADMIN_PASSWORD` in a
 secure environment.
 
 ## Authentication flow
@@ -630,40 +630,71 @@ Invoke-RestMethod -Method Patch `
   -Body $resolveBody
 ```
 
-### Notifications & Reminders (Module 8)
-
-Keylo provides in-app notifications generated from domain events (lead assignment, handoff escalation and resolution, site visit booking confirmation and cancellation) alongside automated background reminders dispatched at **24 hours and 2 hours** prior to scheduled site visits. Duplicate deliveries are strictly prevented through database idempotency constraints (`uq_notifications_idempotency_key`), and buyer contact opt-out consents are honored.
-
-Example checking notifications and unread count:
-
-```powershell
-# 1. Check unread count
-$unread = Invoke-RestMethod -Method Get `
-  -Uri "http://127.0.0.1:8000/api/v1/notifications/unread-count" `
-  -Headers $buyerHeaders
-
-Write-Host "Unread notifications: $($unread.unread_count)"
-
-# 2. List unread notifications
-$notifications = Invoke-RestMethod -Method Get `
-  -Uri "http://127.0.0.1:8000/api/v1/notifications?is_read=false&page=1&page_size=10" `
-  -Headers $buyerHeaders
-
-# 3. Mark single notification as read
-$firstNotifId = $notifications.items[0].id
-Invoke-RestMethod -Method Patch `
-  -Uri "http://127.0.0.1:8000/api/v1/notifications/$firstNotifId/read" `
-  -Headers $buyerHeaders
-
-# 4. Mark all remaining notifications as read
-Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/api/v1/notifications/mark-all-read" `
-  -Headers $buyerHeaders
-```
-
 ### Notifications & Reminders (Module 8)
 
-Keylo provides in-app notifications generated from domain events (lead assignment, handoff escalation and resolution, site visit booking confirmation and cancellation) alongside automated background reminders dispatched at **24 hours and 2 hours** prior to scheduled site visits. Duplicate deliveries are strictly prevented through database idempotency constraints (`uq_notifications_idempotency_key`), and buyer contact opt-out consents are honored.
+
+
+PropFlow provides in-app notifications generated from domain events (lead assignment, handoff escalation and resolution, site visit booking confirmation and cancellation) alongside automated background reminders dispatched at **24 hours and 2 hours** prior to scheduled site visits. Duplicate deliveries are strictly prevented through database idempotency constraints (`uq_notifications_idempotency_key`), and buyer contact opt-out consents are honored.
+
+
+
+Example checking notifications and unread count:
+
+
+
+```powershell
+
+# 1. Check unread count
+
+$unread = Invoke-RestMethod -Method Get `
+
+  -Uri "http://127.0.0.1:8000/api/v1/notifications/unread-count" `
+
+  -Headers $buyerHeaders
+
+
+
+Write-Host "Unread notifications: $($unread.unread_count)"
+
+
+
+# 2. List unread notifications
+
+$notifications = Invoke-RestMethod -Method Get `
+
+  -Uri "http://127.0.0.1:8000/api/v1/notifications?is_read=false&page=1&page_size=10" `
+
+  -Headers $buyerHeaders
+
+
+
+# 3. Mark single notification as read
+
+$firstNotifId = $notifications.items[0].id
+
+Invoke-RestMethod -Method Patch `
+
+  -Uri "http://127.0.0.1:8000/api/v1/notifications/$firstNotifId/read" `
+
+  -Headers $buyerHeaders
+
+
+
+# 4. Mark all remaining notifications as read
+
+Invoke-RestMethod -Method Post `
+
+  -Uri "http://127.0.0.1:8000/api/v1/notifications/mark-all-read" `
+
+  -Headers $buyerHeaders
+
+```
+
+
+
+### Notifications & Reminders (Module 8)
+
+PropFlow provides in-app notifications generated from domain events (lead assignment, handoff escalation and resolution, site visit booking confirmation and cancellation) alongside automated background reminders dispatched at **24 hours and 2 hours** prior to scheduled site visits. Duplicate deliveries are strictly prevented through database idempotency constraints (`uq_notifications_idempotency_key`), and buyer contact opt-out consents are honored.
 
 Example checking notifications and unread count:
 

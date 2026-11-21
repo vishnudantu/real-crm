@@ -96,6 +96,34 @@ class TenantStatusUpdateRequest(BaseModel):
     status: TenantStatus
 
 
+class TenantFeatureUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    enabled: bool
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class TenantFeatureEntry(BaseModel):
+    feature: str
+    label: str
+    description: str
+    enabled: bool
+    source: str
+    reason: str | None = None
+    updated_at: str | None = None
+
+
+class TenantOnboardRequest(TenantCreateRequest):
+    """One-step onboarding wizard: provision tenant and seed starter flags."""
+
+    plan_code: str | None = None
+    enable_omnichannel: bool = False
+    enable_calling: bool = False
+    enable_connectors: bool = False
+    enable_post_sales: bool = False
+    embed_url: str | None = Field(default=None, max_length=500)
+
+
 class TenantDeploymentRequest(BaseModel):
     provider: str = Field(pattern=r"^(railway|render|aws|local|manual)$")
     environment: str = Field(default="production", max_length=64)

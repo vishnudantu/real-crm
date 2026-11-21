@@ -1,4 +1,4 @@
-# Keylo — Deployment Guide
+# PropFlow — Deployment Guide
 
 ## Running Locally
 
@@ -16,8 +16,8 @@
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/MahanteshPatil1214/KEYLO.git
-cd KEYLO
+git clone https://github.com/vishnudantu/real-crm.git
+cd PROPFLOW
 ```
 
 ---
@@ -48,7 +48,7 @@ copy .env.example .env       # Windows
 Edit `.env` and set at minimum:
 
 ```
-DATABASE_URL=sqlite:///./keylo_dev.db
+DATABASE_URL=sqlite:///./propflow_dev.db
 JWT_SECRET_KEY=<generate a secure random string of 32+ characters>
 GROQ_API_KEY=<your Groq API key>
 ```
@@ -144,8 +144,8 @@ Create a `.env` file at the repository root (or export variables) to override de
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `POSTGRES_DB` | `keylo_db` | Database name |
-| `POSTGRES_USER` | `keylo` | Database user |
+| `POSTGRES_DB` | `propflow_db` | Database name |
+| `POSTGRES_USER` | `propflow` | Database user |
 | `POSTGRES_PASSWORD` | `change-me-local-dev` | Database password |
 | `POSTGRES_PORT` | `5432` | Host port for PostgreSQL |
 | `JWT_SECRET_KEY` | `change-me-...` | JWT signing secret (change in production) |
@@ -168,7 +168,7 @@ docker compose down -v       # Also remove database volume (destroys all data)
 
 ## Deployment Architecture
 
-Keylo is not currently deployed to a live environment. It runs locally via Docker Compose or directly on `localhost`.
+PropFlow is not currently deployed to a live environment. It runs locally via Docker Compose or directly on `localhost`.
 
 The recommended production topology is:
 
@@ -236,9 +236,9 @@ For a self-hosted VPS, `docker-compose.yml` orchestrates:
 
 | Role | Email | Password | Portal URL |
 |------|-------|----------|------------|
-| Admin | `admin.demo@keylo.com` | `Admin@123456` | http://localhost:5173/admin |
-| Sales Executive | `sales.demo@keylo.com` | `Sales@123456` | http://localhost:5173/sales |
-| Buyer | `buyer.demo@keylo.com` | `Buyer@123456` | http://localhost:5173/buyer |
+| Admin | `admin.demo@propflow-demo.example` | `Admin@123456` | http://localhost:5173/admin |
+| Sales Executive | `sales.demo@propflow-demo.example` | `Sales@123456` | http://localhost:5173/sales |
+| Buyer | `buyer.demo@propflow-demo.example` | `Buyer@123456` | http://localhost:5173/buyer |
 
 These accounts are seeded by `python scripts/prepare_demo_environment.py`.
 
@@ -246,14 +246,14 @@ Change passwords by setting the corresponding environment variables before runni
 
 ```bash
 # Windows PowerShell
-$env:KEYLO_ADMIN_PASSWORD="YourStrongPasswordHere"
+$env:PROPFLOW_ADMIN_PASSWORD="YourStrongPasswordHere"
 python scripts/prepare_demo_environment.py
 
 # macOS / Linux
-KEYLO_ADMIN_PASSWORD="YourStrongPasswordHere" python scripts/prepare_demo_environment.py
+PROPFLOW_ADMIN_PASSWORD="YourStrongPasswordHere" python scripts/prepare_demo_environment.py
 ```
 
-**[ASSUMPTION]** The seed script reads demo account passwords from `KEYLO_ADMIN_PASSWORD`, `KEYLO_SALES_PASSWORD`, and `KEYLO_BUYER_PASSWORD` environment variables, falling back to the defaults shown above if not set.
+**[ASSUMPTION]** The seed script reads demo account passwords from `PROPFLOW_ADMIN_PASSWORD`, `PROPFLOW_SALES_PASSWORD`, and `PROPFLOW_BUYER_PASSWORD` environment variables, falling back to the defaults shown above if not set.
 
 ---
 
@@ -266,4 +266,4 @@ KEYLO_ADMIN_PASSWORD="YourStrongPasswordHere" python scripts/prepare_demo_enviro
 | Frontend API calls fail (CORS) | Confirm `VITE_API_BASE_URL` matches the backend address and `CORS_ALLOWED_ORIGINS` includes the frontend origin |
 | Groq API errors | Check `GROQ_API_KEY` is set and the model name is correct in `.env` |
 | Puppeteer E2E fails | Ensure both backend (`port 8000`) and frontend (`port 5173`) are running before executing the script |
-| SQLite database locked | Ensure only one backend process is running against `keylo_dev.db` |
+| SQLite database locked | Ensure only one backend process is running against `propflow_dev.db` |

@@ -89,3 +89,50 @@ def public_settings_endpoint(
     if tenant is None or tenant.status != TenantStatus.ACTIVE.value:
         raise TenantNotFoundError()
     return tenant_settings(db, tenant)
+
+
+@router.get("/me/features")
+def my_features(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, bool]:
+    """Effective feature flags for the caller's tenant (drives sidebar visibility)."""
+
+    from app.modules.operator.features import resolve_features
+    from app.modules.plans.models import Plan
+
+    tenant = db.get(Tenant, current_user.tenant_id)
+    plan_features: dict = {}
+    if tenant is not None and tenant.plan_id is not None:
+        plan = db.get(Plan, tenant.plan_id)
+        plan_features = dict(plan.features or {}) if plan else {}
+    return resolve_features(db, tenant_id=current_user.tenant_id, plan_features=plan_features)
+
+
+@router.get("/me/embed-snippet")
+def my_embed_snippet(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Return the tenant's branded widget embed snippet for copy/paste install."""
+
+    from app.core.config import get_settings
+    from app.modules.operator import features
+
+    tenant = db.get(Tenant, admin.tenant_id)
+    if tenant is None:
+        raise TenantNotFoundError()
+    if not features.tenant_feature_state(db, tenant_id=tenant.id, key="web_widget"):
+        return {"enabled": False, "snippet": None, "embed_url": None}
+    api_base = get_settings().frontend_base_url.rstrip("/")
+    embed_url = f"{api_base}/api/v1/widget/{tenant.slug}/embed.js"
+    return {
+        "enabled": True,
+        "slug": tenant.slug,
+        "embed_url": embed_url,
+        "snippet": f'<script src="{embed_url}" async defer></script>',
+        "installation": (
+            "Paste this snippet before the closing </body> tag on any website. "
+            "The chat bubble and contact form appear automatically and use your branding."
+        ),
+    }

@@ -104,12 +104,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     register_exception_handlers(application)
 
+    # Widget endpoints serve third-party websites (the tenant's own domain), so
+    # they intentionally allow any origin. Widget calls carry a tenant-scoped
+    # bearer token rather than cookies, and no response sets credentials.
+    from app.core.cors import PathCORSMiddleware
+
     application.add_middleware(
-        CORSMiddleware,
-        allow_origins=app_settings.cors_allowed_origins,
-        allow_credentials="*" not in app_settings.cors_allowed_origins,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        PathCORSMiddleware,
+        widget_prefix=f"{app_settings.api_v1_prefix}/widget/",
+        allowed_origins=app_settings.cors_allowed_origins,
     )
 
     application.include_router(api_router, prefix=app_settings.api_v1_prefix)

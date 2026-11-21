@@ -26,6 +26,8 @@ from app.modules.handoffs import models as handoffs_models  # noqa: F401
 from app.modules.leads import models as leads_models  # noqa: F401
 from app.modules.messaging import models as messaging_models  # noqa: F401
 from app.modules.notifications import models as notifications_models  # noqa: F401
+from app.modules.omnichannel import models as omnichannel_models  # noqa: F401
+from app.modules.operator import feature_models as operator_feature_models  # noqa: F401
 from app.modules.operator import models as operator_models  # noqa: F401
 from app.modules.operator import deployments as operator_deployments  # noqa: F401
 from app.modules.plans import models as plans_models  # noqa: F401

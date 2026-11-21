@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Skyline Developers — Website Widget Demo</title>
+<style>
+  :root { --brand: #2563eb; --ink: #1c1917; --muted: #6b7280; --bg: #f8f7f4; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
+  .topbar { background: #fff; border-bottom: 1px solid #e7e5e4; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; }
+  .topbar strong { color: var(--brand); font-size: 18px; }
+  .badge { font-size: 12px; background: #eff6ff; color: var(--brand); border: 1px solid #bfdbfe; padding: 4px 10px; border-radius: 999px; }
+  .hero { max-width: 1100px; margin: 0 auto; padding: 64px 24px 32px; }
+  .hero h1 { font-size: 42px; line-height: 1.1; margin: 0 0 16px; }
+  .hero p { font-size: 18px; color: var(--muted); max-width: 620px; }
+  .grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px 64px; }
+  .card { background: #fff; border: 1px solid #e7e5e4; border-radius: 16px; padding: 24px; }
+  .card h2 { margin: 0 0 12px; font-size: 20px; }
+  .card p, .card li { color: var(--muted); font-size: 14px; line-height: 1.6; }
+  .pillars { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  .pillars li { padding-left: 22px; position: relative; }
+  .pillars li::before { content: ""; position: absolute; left: 0; top: 8px; width: 10px; height: 10px; border-radius: 50%; background: var(--brand); }
+  .note { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 14px 16px; font-size: 13px; color: #92400e; }
+  .proj { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 1px solid #f1f0ee; }
+  .proj:first-of-type { border-top: none; }
+  .proj strong { display: block; }
+  .proj span { color: var(--muted); font-size: 13px; }
+  .price { color: var(--brand); font-weight: 600; white-space: nowrap; }
+  footer { text-align: center; padding: 32px; color: var(--muted); font-size: 12px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } .hero h1 { font-size: 32px; } }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <strong>SKYLINE DEVELOPERS</strong>
+    <span class="badge">Demo — third-party website simulation</span>
+  </div>
+
+  <section class="hero">
+    <h1>Skyline Residency, Hyderabad</h1>
+    <p>
+      This page simulates a real-estate developer's own marketing website. The
+      <strong>chat bubble at the bottom-right is the PropFlow widget</strong> —
+      the exact script a tenant would paste onto their site. Every message and
+      contact form you submit lands in the Skyline omnichannel inbox in real time.
+    </p>
+  </section>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Try the widget (bottom-right)</h2>
+      <ul class="pillars">
+        <li><strong>Chat:</strong> click the blue bubble, type a question about the project — a fact-grounded AI replies instantly and the thread appears in the agent inbox.</li>
+        <li><strong>Lead capture:</strong> enter your name + phone and tick the consent box, then choose <em>Get a call back</em>. A DPDP-consented WEBSITE lead is created and linked to your chat thread.</li>
+        <li><strong>White-label:</strong> colors and brand name come from Skyline's tenant settings, not PropFlow's.</li>
+      </ul>
+      <div class="note" style="margin-top:16px">
+        Tip: open the <strong>Omnichannel Inbox</strong> in the admin console after sending a
+        message — your conversation will be waiting there under <em>Website chat</em>.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Featured project</h2>
+      <div class="proj">
+        <div><strong>2 BHK · Skyline Residency</strong><span>Ahmedabad · RERA registered</span></div>
+        <div class="price">₹68 L*</div>
+      </div>
+      <div class="proj">
+        <div><strong>3 BHK · Skyline Residency</strong><span>Ahmedabad · Corner units</span></div>
+        <div class="price">₹92 L*</div>
+      </div>
+      <div class="proj">
+        <div><strong>Penthouse · Skyline Residency</strong><span>Ahmedabad · Limited</span></div>
+        <div class="price">₹1.6 Cr*</div>
+      </div>
+      <p style="font-size:12px">* Illustrative demo pricing only.</p>
+    </div>
+  </div>
+
+  <footer>
+    Demo environment · PropFlow omnichannel widget ·
+    Widget served from <code>/api/v1/widget/omni-demo/embed.js</code>
+  </footer>
+
+  <!-- THE ACTUAL PROPFLOW WIDGET — this is the one-line tenant install -->
+  <script src="http://127.0.0.1:8010/api/v1/widget/omni-demo/embed.js" async defer></script>
+</body>
+</html>

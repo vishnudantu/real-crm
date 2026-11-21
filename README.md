@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/keylo-logo-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/assets/keylo-logo-light.png">
-    <img src="docs/assets/keylo-logo.png" alt="PropFlow Logo" width="220" />
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/propflow-logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/propflow-logo-light.png">
+    <img src="docs/assets/propflow-logo.png" alt="PropFlow Logo" width="220" />
   </picture>
 </p>
 
@@ -38,7 +38,7 @@
 ## Key Features
 
 - **Multi-tenant SaaS core**: Shared-schema tenant isolation with tenant_id on all business tables, tenant claim in JWT, and cross-tenant query scoping in every module. Super-admin does not exist as a bypass; roles are tenant-local.
-- **White-label branding**: Per-tenant brand name, logo, theme color, currency/timezone/date format. Fully sans-serif UI (Manrope). No "Keylo" branding anywhere.
+- **White-label branding**: Per-tenant brand name, logo, theme color, currency/timezone/date format. Fully sans-serif UI (Manrope). Each tenant sees only their own brand inside their portals and website widget.
 - **SaaS operator control plane**: Platform operators (separate identity/JWT audience) provision tenants, suspend/activate them, manage subscription plans and INR pricing, track deployments, and review an operator audit log.
 - **Lead workflows**: Role-scoped lead intake, assignment, lifecycle transitions, follow-ups with due/overdue/upcoming tiers, human handoffs from AI to sales.
 - **Site visits**: Capacity-enforced booking with concurrency control, reschedule/cancel, status outcomes, and 24h/2h reminders via a tenant-scoped scheduler.
@@ -187,8 +187,8 @@ npm run build
 npm run preview
 ```
 
-### 4. Realistic 1-Month Demo Environment (Ahmedabad 2/3 BHK)
-To populate the database with a 30-day operational demo environment (45 buyers, 3 Ahmedabad residential projects, 125 leads, visit slots, bookings, follow-ups, and marketing spend):
+### 4. Realistic 1-Month Demo Environment (Hyderabad 2/3 BHK)
+To populate the database with a 30-day operational demo environment (45 buyers, 3 Hyderabad residential projects, 125 leads, visit slots, bookings, follow-ups, and marketing spend):
 
 ```bash
 cd backend
@@ -218,7 +218,7 @@ docker compose up --build
 
 | Service | Port | Details |
 |---------|------|---------|
-| `db` | 5432 | PostgreSQL 16 (persisted via `keylo_postgres_data` volume) |
+| `db` | 5432 | PostgreSQL 16 (persisted via `propflow_postgres_data` volume) |
 | `backend` | 8000 | FastAPI app with auto-reload (`--reload`) |
 | `frontend` | 5173 | Vite dev server with hot module replacement |
 
@@ -228,8 +228,8 @@ Create a `.env` file at the repository root (or export variables) to override de
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `POSTGRES_DB` | `keylo_db` | Database name |
-| `POSTGRES_USER` | `keylo` | Database user |
+| `POSTGRES_DB` | `propflow_db` | Database name |
+| `POSTGRES_USER` | `propflow` | Database user |
 | `POSTGRES_PASSWORD` | `change-me-local-dev` | Database password |
 | `POSTGRES_PORT` | `5432` | Host port for PostgreSQL |
 | `JWT_SECRET_KEY` | `change-me-...` | JWT signing secret (change in production) |
@@ -245,7 +245,7 @@ docker compose down -v       # Also remove database volume (destroys all data)
 **Seed demo data**
 
 The stack starts with an empty database. To populate it with the realistic
-1-month Ahmedabad demo environment (45 buyers, 3 projects, 125 leads, visits,
+1-month Hyderabad demo environment (45 buyers, 3 projects, 125 leads, visits,
 follow-ups, marketing spend):
 
 ```bash
@@ -277,7 +277,7 @@ Configure `backend/.env` based on `backend/.env.example`:
 
 | Variable | Description | Default / Example |
 | :--- | :--- | :--- |
-| `DATABASE_URL` | SQLAlchemy connection string | `sqlite:///./keylo_dev.db` |
+| `DATABASE_URL` | SQLAlchemy connection string | `sqlite:///./propflow_dev.db` |
 | `JWT_SECRET_KEY` | Secret key for JWT signing | *(Generate secure 32+ byte string)* |
 | `JWT_ALGORITHM` | Cryptographic algorithm for JWT | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Session token lifetime | `30` |
@@ -294,9 +294,9 @@ Configure `backend/.env` based on `backend/.env.example`:
 
 | Portal | Role | Email | Password | Primary URL |
 | :--- | :--- | :--- | :--- | :--- |
-| **Admin Console** | `ADMIN` | `admin.demo@keylo.com` | `Admin@123456` | [http://127.0.0.1:5173/admin](http://127.0.0.1:5173/admin) |
-| **Sales Workspace** | `SALES_EXECUTIVE` | `sales.demo@keylo.com` | `Sales@123456` | [http://127.0.0.1:5173/sales](http://127.0.0.1:5173/sales) |
-| **Buyer Portal** | `BUYER` | `buyer.demo@keylo.com` | `Buyer@123456` | [http://127.0.0.1:5173/buyer](http://127.0.0.1:5173/buyer) |
+| **Admin Console** | `ADMIN` | `admin.demo@propflow-demo.example` | `Admin@123456` | [http://127.0.0.1:5173/admin](http://127.0.0.1:5173/admin) |
+| **Sales Workspace** | `SALES_EXECUTIVE` | `sales.demo@propflow-demo.example` | `Sales@123456` | [http://127.0.0.1:5173/sales](http://127.0.0.1:5173/sales) |
+| **Buyer Portal** | `BUYER` | `buyer.demo@propflow-demo.example` | `Buyer@123456` | [http://127.0.0.1:5173/buyer](http://127.0.0.1:5173/buyer) |
 
 ---
 
@@ -323,7 +323,7 @@ node frontend/scripts/verify-full-e2e-suite.mjs
 ```
 
 ### 4. Demo Environment Verification
-Validates the seeded Ahmedabad demo environment, dashboards, and metrics:
+Validates the seeded Hyderabad demo environment, dashboards, and metrics:
 ```bash
 node frontend/scripts/verify-demo-environment.mjs
 ```

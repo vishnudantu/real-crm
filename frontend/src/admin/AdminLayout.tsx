@@ -12,11 +12,13 @@ import {
   BookCheck,
   Building2,
   CalendarDays,
+  Inbox,
   LayoutDashboard,
   LogOut,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Plug,
   Settings,
   ShieldCheck,
   Users,
@@ -26,6 +28,7 @@ import { clearSession } from "../auth/session";
 import { Logo } from "../components/Logo";
 import { useAdminUser } from "./AdminAuthGuard";
 import { useTenant } from "../tenant/TenantProvider";
+import { useFeatures } from "../features/FeaturesProvider";
 
 export type AdminNavItem = {
   label: string;
@@ -33,6 +36,7 @@ export type AdminNavItem = {
   to: string;
   icon: typeof LayoutDashboard;
   exact?: boolean;
+  feature?: string;
 };
 
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
@@ -66,12 +70,28 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     shortLabel: "Analytics",
     to: "/admin/analytics",
     icon: BarChart3,
+    feature: "analytics",
+  },
+  {
+    label: "Omnichannel Inbox",
+    shortLabel: "Inbox",
+    to: "/admin/inbox",
+    icon: Inbox,
+    feature: "omnichannel_inbox",
   },
   {
     label: "Sales Bookings",
     shortLabel: "Bookings",
     to: "/admin/sales-bookings",
     icon: BookCheck,
+    feature: "post_sales",
+  },
+  {
+    label: "Channels & Widget",
+    shortLabel: "Channels",
+    to: "/admin/channels",
+    icon: Plug,
+    feature: "omnichannel_inbox",
   },
   {
     label: "Notifications & Settings",
@@ -87,7 +107,6 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   },
 ];
 
-const MOBILE_PRIMARY = ADMIN_NAV_ITEMS.slice(0, 5);
 const SIDEBAR_STORAGE_KEY = "propflow.admin.sidebar-collapsed";
 
 function itemForPath(pathname: string): AdminNavItem | undefined {
@@ -102,6 +121,7 @@ function itemForPath(pathname: string): AdminNavItem | undefined {
 export function AdminLayout() {
   const { user } = useAdminUser();
   const { branding } = useTenant();
+  const { enabled } = useFeatures();
   const location = useLocation();
   const navigate = useNavigate();
   const shouldReduceMotion = useReducedMotion();
@@ -120,6 +140,10 @@ export function AdminLayout() {
 
   const currentItem = itemForPath(location.pathname);
   const pageLabel = currentItem?.label ?? "Admin Console";
+  const visibleItems = ADMIN_NAV_ITEMS.filter(
+    (item) => !item.feature || enabled(item.feature),
+  );
+  const mobilePrimary = visibleItems.slice(0, 5);
 
   const initials =
     user.full_name
@@ -261,7 +285,7 @@ export function AdminLayout() {
               </p>
             )}
             <ul className="space-y-1">
-              {ADMIN_NAV_ITEMS.map((item) => {
+              {visibleItems.map((item) => {
                 const Icon = item.icon;
                 return (
                   <li key={item.to}>
@@ -534,7 +558,7 @@ export function AdminLayout() {
                     Admin Navigation
                   </p>
                   <ul className="space-y-1">
-                    {ADMIN_NAV_ITEMS.map((item) => {
+                    {visibleItems.map((item) => {
                       const Icon = item.icon;
                       return (
                         <li key={item.to}>
@@ -596,7 +620,7 @@ export function AdminLayout() {
         className="fixed inset-x-0 bottom-0 z-30 border-t border-charcoal/10 bg-[#FAFAF7]/95 backdrop-blur-md px-1 pb-[env(safe-area-inset-bottom,0px)] lg:hidden"
       >
         <div className="flex h-16 items-center justify-around">
-          {MOBILE_PRIMARY.map((item) => {
+          {mobilePrimary.map((item) => {
             const Icon = item.icon;
             const isActive = item.exact
               ? location.pathname === item.to ||

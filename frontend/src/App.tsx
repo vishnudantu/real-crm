@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TenantProvider, useTenant } from "./tenant/TenantProvider";
+import { FeaturesProvider } from "./features/FeaturesProvider";
 import { Benefits } from "./components/Benefits";
 import { PublicLanding } from "./components/PublicLanding";
 import { Challenges } from "./components/Challenges";
@@ -34,6 +35,21 @@ import { SystemSettingsPage } from "./admin/SystemSettingsPage";
 const SaleBookingsPage = lazy(() =>
   import("./admin/sales/SaleBookingsPage").then((module) => ({
     default: module.SaleBookingsPage,
+  })),
+);
+const OmnichannelInboxPage = lazy(() =>
+  import("./omnichannel/OmnichannelInboxPage").then((module) => ({
+    default: module.OmnichannelInboxPage,
+  })),
+);
+const ChannelsSettingsPage = lazy(() =>
+  import("./omnichannel/ChannelsSettingsPage").then((module) => ({
+    default: module.ChannelsSettingsPage,
+  })),
+);
+const FeatureNotEnabledPage = lazy(() =>
+  import("./omnichannel/FeatureNotEnabledPage").then((module) => ({
+    default: module.FeatureNotEnabledPage,
   })),
 );
 import { BuyerAuthGuard } from "./buyer/BuyerAuthGuard";
@@ -176,6 +192,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <TenantProvider>
+        <FeaturesProvider>
         <ScrollToTopOnRouteChange />
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -267,6 +284,30 @@ export default function App() {
               <Route path="visits" element={<VisitManagementPage />} />
               <Route path="analytics" element={<AnalyticsDashboardPage />} />
               <Route
+                path="inbox"
+                element={
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <OmnichannelInboxPage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="channels"
+                element={
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <ChannelsSettingsPage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="feature-disabled"
+                element={
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <FeatureNotEnabledPage />
+                  </Suspense>
+                }
+              />
+              <Route
                 path="sales-bookings"
                 element={
                   <Suspense fallback={<RouteLoadingFallback />}>
@@ -313,6 +354,7 @@ export default function App() {
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
+        </FeaturesProvider>
         </TenantProvider>
       </BrowserRouter>
     </QueryClientProvider>

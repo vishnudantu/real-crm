@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.modules.operator import service
+from app.modules.operator import feature_service, features, service
 from app.modules.operator.dependencies import (
     CurrentOperator,
     get_current_operator,
@@ -31,6 +31,9 @@ from app.modules.operator.schemas import (
     TenantCreateRequest,
     TenantDeploymentRequest,
     TenantDeploymentResponse,
+    TenantFeatureEntry,
+    TenantFeatureUpdateRequest,
+    TenantOnboardRequest,
     TenantProvisionResponse,
     TenantStatusUpdateRequest,
 )
@@ -231,3 +234,110 @@ def audit_logs(
     db: Annotated[Session, Depends(get_db)],
 ):
     return list(db.scalars(select(OperatorAuditLog).order_by(OperatorAuditLog.created_at.desc()).limit(200)).all())
+
+
+@router.get("/features/catalog")
+def feature_catalog(
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_READ))],
+):
+    """Every controllable capability and whether it is on by default."""
+
+    return [
+        {
+            "feature": spec.key,
+            "label": spec.label,
+            "description": spec.description,
+            "default_enabled": spec.default_enabled,
+        }
+        for spec in sorted(features.FEATURE_CATALOG, key=lambda s: s.key)
+    ]
+
+
+@router.get("/tenants/{tenant_id}/features", response_model=list[TenantFeatureEntry])
+def tenant_features(
+    tenant_id: UUID,
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_READ))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    return feature_service.tenant_feature_matrix(db, tenant_id=tenant_id)
+
+
+@router.put("/tenants/{tenant_id}/features/{feature}")
+def enable_or_disable_feature(
+    tenant_id: UUID,
+    feature: str,
+    payload: TenantFeatureUpdateRequest,
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_WRITE))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Explicitly enable or disable one feature for one tenant (audited)."""
+
+    return feature_service.set_feature(
+        db,
+        operator=operator,
+        tenant_id=tenant_id,
+        feature=feature,
+        enabled=payload.enabled,
+        reason=payload.reason,
+    )
+
+
+@router.delete("/tenants/{tenant_id}/features/{feature}")
+def reset_feature(
+    tenant_id: UUID,
+    feature: str,
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_WRITE))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Remove the per-tenant override and fall back to the plan/default."""
+
+    return feature_service.reset_feature(db, operator=operator, tenant_id=tenant_id, feature=feature)
+
+
+@router.post("/tenants/onboard", status_code=status.HTTP_201_CREATED)
+def onboard_tenant(
+    payload: TenantOnboardRequest,
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_WRITE))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """One-step onboarding wizard: provision tenant, plan, and starter flags."""
+
+    from fastapi import HTTPException
+
+    plan_id = payload.plan_id
+    if payload.plan_code:
+        from sqlalchemy import select as sql_select
+
+        plan = db.scalar(sql_select(Plan).where(Plan.code == payload.plan_code, Plan.is_active.is_(True)))
+        if plan is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"No active plan named {payload.plan_code!r}.")
+        plan_id = plan.id
+    base_payload = payload.model_copy(update={"plan_id": plan_id})
+    result = service.provision_tenant(db, operator=operator, payload=base_payload)
+    tenant = result["tenant"]
+    requested_flags = {
+        "omnichannel_inbox": payload.enable_omnichannel,
+        "channel_whatsapp": payload.enable_omnichannel,
+        "calling": payload.enable_calling,
+        "connectors": payload.enable_connectors,
+        "post_sales": payload.enable_post_sales,
+    }
+    for feature_key, enabled in requested_flags.items():
+        if enabled:
+            feature_service.set_feature(
+                db, operator=operator, tenant_id=tenant.id, feature=feature_key, enabled=True,
+                reason="Onboarding wizard selection",
+            )
+    embed_url = None
+    if payload.enable_omnichannel or payload.embed_url is not None:
+        embed_url = f"/api/v1/widget/{tenant.slug}/embed.js"
+    return {
+        "tenant_id": tenant.id,
+        "slug": tenant.slug,
+        "brand_name": tenant.brand_name,
+        "status": tenant.status,
+        "plan_id": plan_id,
+        "admin_email": result["admin"].email,
+        "embed_script_url": embed_url,
+        "enabled_features": [k for k, v in requested_flags.items() if v],
+    }

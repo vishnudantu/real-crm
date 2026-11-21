@@ -16,6 +16,9 @@ from app.modules.leads.router import router as leads_router
 from app.modules.messages.router import router as messages_router
 from app.modules.messaging.router import router as messaging_router
 from app.modules.notifications.router import notifications_router
+from app.modules.omnichannel.router import router as omnichannel_router
+from app.modules.omnichannel.router import webhook_router as channel_webhook_router
+from app.modules.omnichannel.widget_router import widget_router
 from app.modules.postsales.router import router as postsales_router
 from app.modules.operator.router import router as operator_router
 from app.modules.projects.router import router as projects_router
@@ -45,3 +48,6 @@ api_router.include_router(operator_router)
 api_router.include_router(connectors_router)
 api_router.include_router(billing_router)
 api_router.include_router(postsales_router)
+api_router.include_router(omnichannel_router)
+api_router.include_router(channel_webhook_router)
+api_router.include_router(widget_router)

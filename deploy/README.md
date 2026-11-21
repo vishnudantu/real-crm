@@ -64,7 +64,7 @@ Provider notes:
    (name, slug, admin email/password, optional plan).
 4. Log in to the tenant admin portal at `/admin`, configure branding, projects,
    messaging templates/rules, and (optionally) billing/AI providers.
-5. Buyer and sales flows work with the default tenant; no Keylo branding remains.
+5. Buyer and sales flows work with the default tenant; portals are white-labeled to each tenant's own brand.
 
 ## 4. Local development quick start
 

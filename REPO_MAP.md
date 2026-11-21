@@ -8,7 +8,7 @@
 > public branding, RBAC). Generic OpenAI-compatible AI provider layer added (OpenAI/Azure/
 > self-hosted) alongside Groq. One-click cloud deploy script at `deploy/cloud_install.sh`.
 >
-> **Migrated and verified locally (2026-11-21):** `backend/keylo_dev.db` was backed up and
+> **Migrated and verified locally (2026-11-21):** `backend/propflow_dev.db` was backed up and
 > migrated to head `e8f2a3b4c5d6` (`alembic check` reports no drift). All existing rows were
 > backfilled to the default tenant (`00000000-0000-0000-0000-000000000001`) with zero
 > `tenant_id` NULLs and zero foreign-key violations; tenant-local project-slug uniqueness is
@@ -270,7 +270,7 @@ Templates use placeholders such as `{project_name}`, `{slot_time}`, and `{execut
 | `scripts/seed_roles.py` | Idempotently seeds the three global roles. |
 | `scripts/create_admin.py` | Trusted interactive/environment-driven first-admin provisioning. |
 | `scripts/setup_dev_database.py` | Calls `Base.metadata.create_all`; seeds roles, baseline accounts, Bangalore/Hyderabad/Gurgaon projects/facts, sample leads/slots/bookings/spend, and settings/templates. Missing account passwords are securely generated. |
-| `scripts/prepare_demo_environment.py` | Creates the larger Ahmedabad demo, described as 45 buyers, 3 projects, 125 leads, conversations, visits, follow-ups, handoffs, notifications, audit and spend. Uses a fixed November 7, 2026 anchor. `--reset` deletes matching demo data. Re-running also resets core demo-account password hashes. Calls `create_all` directly. Not executed during Phase 0. |
+| `scripts/prepare_demo_environment.py` | Creates the larger Hyderabad demo, described as 45 buyers, 3 projects, 125 leads, conversations, visits, follow-ups, handoffs, notifications, audit and spend. Uses a fixed November 7, 2026 anchor. `--reset` deletes matching demo data. Re-running also resets core demo-account password hashes. Calls `create_all` directly. Not executed during Phase 0. |
 | `scripts/seed_follow_ups.py` | Adds follow-ups against existing leads/users. |
 | `scripts/setup_test_buyer_portal.py` | Manual buyer-portal fixture data setup, not the pytest fixture mechanism. |
 

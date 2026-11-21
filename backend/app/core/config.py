@@ -157,6 +157,10 @@ class Settings(BaseSettings):
     razorpay_key_secret: SecretStr | None = Field(default=None)
     razorpay_webhook_secret: SecretStr | None = Field(default=None)
     plan_grace_days: int = Field(default=7, ge=0, le=90)
+    encryption_key: SecretStr | None = Field(
+        default=None,
+        description="Fernet key for encrypting per-tenant channel/provider credentials.",
+    )
 
     @property
     def api_v1_prefix(self) -> str:
@@ -268,6 +272,11 @@ class Settings(BaseSettings):
         if any(marker in jwt_secret for marker in _JWT_PLACEHOLDER_MARKERS):
             raise ValueError(
                 "JWT_SECRET_KEY must not use a placeholder value in production."
+            )
+        if self.encryption_key is None or not self.encryption_key.get_secret_value():
+            raise ValueError(
+                "ENCRYPTION_KEY must be configured in production; it protects "
+                "tenant channel credentials."
             )
         return self
 

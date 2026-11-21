@@ -1,6 +1,6 @@
-# Keylo — Technical Design Document
+# PropFlow — Technical Design Document
 
-**GitHub Repository:** https://github.com/MahanteshPatil1214/KEYLO  
+**GitHub Repository:** https://github.com/vishnudantu/real-crm  
 **Live Deployment:** Not currently deployed (local development only)
 
 ---
@@ -9,7 +9,7 @@
 
 ### Overview
 
-Keylo is a **modular monolith** — a single deployable application whose internals are separated into well-defined, independently testable modules. This was chosen over microservices because:
+PropFlow is a **modular monolith** — a single deployable application whose internals are separated into well-defined, independently testable modules. This was chosen over microservices because:
 
 - The team is small and velocity matters more than independent scaling.
 - All domains (leads, conversations, bookings) share the same database, so distributed transactions are unnecessary overhead.
@@ -203,7 +203,7 @@ The AI never answers from general knowledge about real estate. Every response is
 
 ```python
 system_prompt = f"""
-You are Keylo AI, a friendly real-estate assistant for {project.name}.
+You are PropFlow AI, a friendly real-estate assistant for {project.name}.
 
 APPROVED FACTS (use ONLY these to answer):
 {published_fact_sheet.content}
@@ -300,7 +300,7 @@ The Admin Console uses a collapsible left sidebar with icon-only collapsed state
 | Payment processing | Out of scope for lead-capture phase |
 | Mobile apps (iOS/Android) | Web-first; responsive design covers mobile browsers |
 | Outbound calling / voice AI | Significant infrastructure; not in scope |
-| Full CRM (deal pipelines) | Keylo tracks leads to site-visit; post-visit is external |
+| Full CRM (deal pipelines) | PropFlow tracks leads to site-visit; post-visit is external |
 | Multi-language fact sheets | Admin writes fact sheets in English; AI handles language switching in responses |
 | Real-time chat via WebSockets | REST polling sufficient at demo scale; WebSockets planned for production |
 
@@ -309,7 +309,7 @@ The Admin Console uses a collapsible left sidebar with icon-only collapsed state
 ## 8. What We Would Do Next
 
 1. **WebSocket real-time chat** — Replace REST polling with WebSocket connections for instant message delivery.
-2. **WhatsApp channel** — Integrate WATI or Interakt so buyers can chat via WhatsApp and messages sync to Keylo.
+2. **WhatsApp channel** — Integrate WATI or Interakt so buyers can chat via WhatsApp and messages sync to PropFlow.
 3. **Email & SMS delivery** — Connect SendGrid (email) and Twilio (SMS) to the existing `notifications` table.
 4. **CI/CD pipeline** — GitHub Actions: lint → test → build → deploy on push to `main`. Playwright E2E tests cover buyer portal button flows.
 5. **PostgreSQL in production** — Replace SQLite with a managed PostgreSQL instance (Railway, Supabase, or Neon).
