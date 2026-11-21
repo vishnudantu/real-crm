@@ -1,0 +1,125 @@
+name: propflow
+
+services:
+  # ------------------------------------------------------------
+  # Database: PostgreSQL 16
+  # ------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: propflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-propflow_db}
+      POSTGRES_USER: ${POSTGRES_USER:-propflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-local-dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - propflow_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # ------------------------------------------------------------
+  # Backend: FastAPI (Python 3.13)
+  # ------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: propflow-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env
+    environment:
+      APP_NAME: PropFlow API
+      ENVIRONMENT: development
+      API_VERSION: v1
+      DEBUG: "true"
+      LOG_LEVEL: INFO
+      # Point SQLAlchemy at the db service, not localhost
+      DATABASE_URL: postgresql+psycopg2://propflow:change-me-local-dev@db:5432/propflow_db
+      CORS_ALLOWED_ORIGINS: '["http://localhost:5173","http://127.0.0.1:5173","http://frontend:5173"]'
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-use-a-random-64-character-secret-key-for-jwt-signing}
+      JWT_ALGORITHM: HS256
+      JWT_ISSUER: propflow-api
+      JWT_AUDIENCE: propflow-clients
+      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      GROQ_MODEL: openai/gpt-oss-120b
+      POSTGRES_DB: propflow_db
+      POSTGRES_USER: propflow
+      POSTGRES_PASSWORD: change-me-local-dev
+      POSTGRES_PORT: 5432
+    # Volume mount for hot reload during development
+    volumes:
+      - ./backend:/app:ro
+    # Run migrations on startup (db must be healthy first), then start server
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+
+  # ------------------------------------------------------------
+  # Frontend: React + Vite (Node 20 dev server)
+  # ------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: dev
+    container_name: propflow-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    # Volume mounts for hot module replacement (HMR).
+    # NOTE: /app must NOT be covered by a directory bind mount, otherwise
+    # Docker cannot create the /app/.vite and /app/node_modules mountpoints
+    # beneath it ("read-only file system"). Bind only the source files/dirs
+    # Vite needs at runtime; node_modules and the .vite cache still come from
+    # volumes seeded from the image layer.
+    volumes:
+      - ./frontend/index.html:/app/index.html:ro
+      - ./frontend/vite.config.ts:/app/vite.config.ts:ro
+      - ./frontend/src:/app/src:ro
+      - ./frontend/public:/app/public:ro
+      - /app/node_modules
+      - propflow_frontend_cache:/app/.vite
+
+  # ------------------------------------------------------------
+  # Seed: one-off demo data (opt-in via --profile seed)
+  # ------------------------------------------------------------
+  seed:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: propflow-seed
+    profiles: ["seed"]
+    depends_on:
+      backend:
+        condition: service_started
+    env_file:
+      - backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://propflow:change-me-local-dev@db:5432/propflow_db
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-use-a-random-64-character-secret-key-for-jwt-signing}
+      JWT_ALGORITHM: HS256
+      JWT_ISSUER: propflow-api
+      JWT_AUDIENCE: propflow-clients
+      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      GROQ_MODEL: openai/gpt-oss-120b
+    volumes:
+      - ./backend:/app:ro
+    command: ["python", "scripts/prepare_demo_environment.py"]
+
+volumes:
+  propflow_postgres_data:
+  propflow_frontend_cache:

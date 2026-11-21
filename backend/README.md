@@ -1,0 +1,834 @@
+# Keylo Backend
+
+Backend for Keylo, an AI-powered real-estate lead-response and site-visit
+booking assistant. The architecture is a FastAPI modular monolith with
+PostgreSQL, SQLAlchemy 2.0, Alembic, Pydantic v2, Argon2, and JWT.
+
+This directory currently implements:
+
+- **Module 0: Backend Foundation** — app factory, configuration, database
+  sessions, Alembic, logging, error envelope, health checks, CORS, tests.
+- **Module 1: Authentication & User Management** — roles, users, buyer
+  registration, login, JWT access tokens, current-user dependencies,
+  role-based authorization, profile updates, and admin user management.
+- **Module 2: Projects & Fact Sheets** — projects, draft/approved facts, staged
+  approved-fact edits, approval/rejection, answer version history, role-aware
+  reads, and the AI-safe approved-facts retrieval boundary.
+- **Module 3: Lead Management** — lead intake, source tracking, normalized
+  duplicate detection, advisory concurrency locks, role-based listing and search,
+  lifecycle status transitions, consent enforcement, sales executive assignment,
+  and assignment history preservation.
+- **Module 4: Conversations & Messages** — dialogue threads linked to leads,
+  projects, and buyers, role-based conversation and message access control,
+  sender-type integrity validation, message history retrieval (with ordering and
+  pagination), conversation status lifecycle, and direct message lookup.
+- **Module 5: AI Assistant with Groq** — fact-grounded buyer chat service
+  powered by the official Groq Python SDK, contextual conversation history,
+  strict safety boundaries (no hallucinations, no price negotiations, human
+  escalation on request), multilingual responses (English, Hindi, Gujarati),
+  and resilient error handling ensuring buyer messages are never lost.
+- **Module 6: Availability & Site Visit Booking** — administrative visit slot
+  management, dynamic real-time slot availability, buyer site-visit booking with
+  concurrency control (`SELECT ... FOR UPDATE` row locks), double-booking
+  prevention, consent-to-contact enforcement, self-service cancellation with
+  immediate capacity release, lead status synchronization, and role-isolated
+  booking visibility (`PENDING`, `CONFIRMED`, `CANCELLED`, `COMPLETED`, `NO_SHOW`).
+- **Module 7: Human Handoff** — buyer-initiated escalation, automatic conversation
+  flagging when AI cannot answer using approved facts, handoff records linked
+  to conversation, lead, and sales executive, admin executive assignment,
+  role-isolated handoff visibility, factual conversation summaries, duplicate
+  active handoff prevention (`uq_handoffs_conversation_active`), SYSTEM notification
+  messages via Module 4, and resolution tracking (`PENDING`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `CANCELLED`).
+- **Module 8: Notifications & Reminders** — in-app notifications for lead,
+  handoff, and booking events, idempotent delivery, buyer consent enforcement,
+  and scheduled 24-hour/2-hour visit reminders.
+- **Module 9: Dashboard & Analytics** — role-scoped summaries and trends,
+  database-side first-response averages and medians, source performance,
+  executive performance, explicit rate denominators, and admin-managed
+  marketing spend with cost per completed visit.
+
+See the [repository README](../README.md) for the full project overview,
+architecture, API examples, and security notes.
+
+## Quick start (Windows PowerShell)
+
+```powershell
+cd E:\KEYLO\backend
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
+
+Copy-Item .env.example .env
+# Edit .env:
+# - use the same strong local password in POSTGRES_PASSWORD and DATABASE_URL
+# - replace JWT_SECRET_KEY with:
+#   python -c "import secrets; print(secrets.token_urlsafe(64))"
+
+docker compose up -d db
+alembic upgrade head
+python -m scripts.seed_roles
+
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Linux/macOS uses `python3 -m venv .venv`, `source .venv/bin/activate`, and
+`cp .env.example .env` instead.
+
+## Configuration
+
+Settings are loaded from environment variables and `backend/.env` by
+`app/core/config.py`. `DATABASE_URL` and `JWT_SECRET_KEY` are required;
+`.env.example` contains placeholders only.
+
+Authentication-related variables:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `JWT_SECRET_KEY` | Symmetric JWT signing secret, at least 32 characters | Required |
+| `JWT_ALGORITHM` | `HS256`, `HS384`, or `HS512` | `HS256` |
+| `JWT_ISSUER` | Validated `iss` claim | `keylo-api` |
+| `JWT_AUDIENCE` | Validated `aud` claim | `keylo-clients` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Access-token lifetime | `30` |
+| `GROQ_API_KEY` | Groq API key (optional in dev/test; masked `SecretStr`) | `None` |
+| `GROQ_MODEL` | Chat completion model | `openai/gpt-oss-120b` |
+| `GROQ_TIMEOUT_SECONDS` | API request timeout in seconds | `20.0` |
+| `GROQ_MAX_RETRIES` | Maximum retry attempts for API calls | `2` |
+| `ASSISTANT_MAX_HISTORY_MESSAGES` | Past messages supplied for conversational context | `10` |
+| `ASSISTANT_TEMPERATURE` | LLM generation sampling temperature | `0.2` |
+
+Production startup validation requires:
+
+- `ENVIRONMENT=production`
+- `DEBUG=false`
+- a PostgreSQL `DATABASE_URL`
+- `CORS_ALLOWED_ORIGINS` explicitly set to one or more non-wildcard origins
+- a non-placeholder `JWT_SECRET_KEY` of at least 32 characters
+
+Database and JWT secrets are held in `SecretStr` values and are never logged.
+
+## Migrations and role seeding
+
+```powershell
+alembic upgrade head
+alembic current
+alembic check
+python -m scripts.seed_roles
+```
+
+The first revision creates `roles` and `users`; the second creates `projects`,
+`project_facts`, and `fact_versions`; the third creates `leads` and
+`lead_assignments`; the fourth creates `conversations` and `messages`, including
+sender-type, status, and non-empty content check constraints, cascade deletes,
+foreign keys to users, projects, and leads, and composite query indexes.
+The role seed creates `BUYER`, `SALES_EXECUTIVE`, and `ADMIN`, and is safe to
+run repeatedly.
+
+`alembic/env.py` imports the Module 1, Module 2, Module 3, and Module 4 models
+so autogenerated migrations see them.
+
+## First administrator
+
+There is no default admin account and no public admin registration. Create the
+first administrator through a trusted local process:
+
+```powershell
+python -m scripts.create_admin
+```
+
+The script prompts for email, full name, and password, applies the same password
+policy as registration, and refuses duplicate emails. For automated deployment,
+set `KEYLO_ADMIN_EMAIL`, `KEYLO_ADMIN_FULL_NAME`, and `KEYLO_ADMIN_PASSWORD` in a
+secure environment.
+
+## Authentication flow
+
+1. `POST /api/v1/auth/register` creates a `BUYER` account. Extra fields such as
+   `role` are rejected.
+2. Passwords are hashed with Argon2; plain-text passwords and hashes are never
+   returned.
+3. `POST /api/v1/auth/login` returns a signed JWT access token.
+4. Protected requests use `Authorization: Bearer <token>`.
+5. The backend validates the signature, issuer, audience, expiry, token type,
+   and subject, loads the user, and rejects inactive accounts.
+6. Roles are read from the database on every request, so revoked roles and
+   deactivated accounts take effect immediately.
+7. `GET /api/v1/auth/me` returns the current safe profile.
+
+Login errors are identical for unknown emails, wrong passwords, and inactive
+accounts to avoid email enumeration.
+
+Send the token exactly as:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+In Swagger UI, click **Authorize** and paste only the `access_token` value — do
+not include the `Bearer ` prefix there. In Postman, use **Authorization →
+Bearer Token** and paste only the token value.
+
+An immediate `401 Invalid or expired access token` usually means the header
+contains `Bearer Bearer <token>`, the raw token was sent without the
+`Authorization: Bearer ` prefix, a registration `id` was used instead of the
+login `access_token`, or the token was signed with a different `JWT_SECRET_KEY`
+after restarting with another `.env`. Tokens also expire after
+`ACCESS_TOKEN_EXPIRE_MINUTES` (30 minutes by default).
+
+## API endpoints
+
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/` | Public | Basic application information |
+| `GET` | `/api/v1/health` | Public | Liveness |
+| `GET` | `/api/v1/health/ready` | Public | Readiness (`SELECT 1`) |
+| `POST` | `/api/v1/auth/register` | Public | Register a buyer |
+| `POST` | `/api/v1/auth/login` | Public | Receive an access token |
+| `GET` | `/api/v1/auth/me` | Authenticated | Current profile |
+| `GET` | `/api/v1/users` | Admin | Paginated user listing |
+| `GET` | `/api/v1/users/{user_id}` | Self or admin | User profile |
+| `PATCH` | `/api/v1/users/{user_id}` | Self or admin | Update permitted fields |
+| `PATCH` | `/api/v1/users/{user_id}/status` | Admin | Activate/deactivate account |
+| `POST` | `/api/v1/projects` | Admin | Create a project |
+| `GET` | `/api/v1/projects` | Authenticated | Paginated project listing |
+| `GET` | `/api/v1/projects/{project_id}` | Authenticated | Project detail |
+| `PATCH` | `/api/v1/projects/{project_id}` | Admin | Update details/status |
+| `POST` | `/api/v1/projects/{project_id}/facts` | Admin | Create a draft fact |
+| `GET` | `/api/v1/projects/{project_id}/facts` | Authenticated | Paginated fact listing |
+| `GET` | `/api/v1/facts/{fact_id}` | Authenticated | Fact detail |
+| `PATCH` | `/api/v1/facts/{fact_id}` | Admin | Edit/stage a fact change |
+| `POST` | `/api/v1/facts/{fact_id}/approve` | Admin | Approve or publish a staged edit |
+| `POST` | `/api/v1/facts/{fact_id}/reject` | Admin | Discard a staged edit/unpublish |
+| `GET` | `/api/v1/facts/{fact_id}/versions` | Admin | Paginated answer history |
+| `POST` | `/api/v1/leads` | Public | Create a lead (public intake) |
+| `GET` | `/api/v1/leads/duplicates/check` | Admin | Check duplicates by normalized email/phone |
+| `GET` | `/api/v1/leads` | Admin / Sales Exec | Paginated lead listing, search, and filters |
+| `GET` | `/api/v1/leads/{lead_id}` | Admin or assigned Sales Exec | Lead detail |
+| `PATCH` | `/api/v1/leads/{lead_id}` | Admin or assigned Sales Exec | Update lead contact/budget fields |
+| `PATCH` | `/api/v1/leads/{lead_id}/status` | Admin or assigned Sales Exec | Lifecycle status transition |
+| `POST` | `/api/v1/leads/{lead_id}/assign` | Admin | Assign or reassign to a sales executive |
+| `GET` | `/api/v1/leads/{lead_id}/assignments` | Admin or assigned Sales Exec | Paginated assignment history |
+| `POST` | `/api/v1/conversations` | Authenticated | Create a conversation (with optional initial message) |
+| `GET` | `/api/v1/conversations` | Authenticated | Paginated conversations listing with project, lead, and status filters |
+| `GET` | `/api/v1/conversations/{conversation_id}` | Authenticated | Conversation detail (role-isolated) |
+| `PATCH` | `/api/v1/conversations/{conversation_id}/status` | Authenticated | Update conversation status (Admin required for ARCHIVED) |
+| `POST` | `/api/v1/conversations/{conversation_id}/messages` | Authenticated | Send a message to an active conversation |
+| `GET` | `/api/v1/conversations/{conversation_id}/messages` | Authenticated | Paginated message history (asc/desc order) |
+| `GET` | `/api/v1/messages/{message_id}` | Authenticated | Retrieve an individual message (role-isolated) |
+| `POST` | `/api/v1/conversations/{conversation_id}/chat` | Authenticated | Send a buyer message and receive a fact-grounded AI reply |
+| `POST` | `/api/v1/assistant/chat` | Authenticated | Generic assistant chat endpoint accepting conversation_id in body |
+| `POST` | `/api/v1/slots` | Admin | Create a visit slot for an active project |
+| `GET` | `/api/v1/slots` | Admin / Staff | Paginated visit slots listing with filters |
+| `GET` | `/api/v1/slots/{slot_id}` | Authenticated | Visit slot details |
+| `PATCH` | `/api/v1/slots/{slot_id}` | Admin | Update visit slot capacity or notes |
+| `PATCH` | `/api/v1/slots/{slot_id}/deactivate` | Admin | Soft-deactivate a visit slot |
+| `GET` | `/api/v1/slots/available` | Authenticated | Real-time available slots with remaining capacity |
+| `POST` | `/api/v1/bookings` | Buyer / Staff | Reserve a site visit slot |
+| `GET` | `/api/v1/bookings` | Authenticated | Paginated booking listing (role-isolated) |
+| `GET` | `/api/v1/bookings/{booking_id}` | Authenticated | Booking details (role-isolated) |
+| `POST` | `/api/v1/bookings/{booking_id}/cancel` | Buyer / Admin | Cancel a booking and release capacity |
+| `PATCH` | `/api/v1/bookings/{booking_id}/status` | Admin / Assigned Sales Exec | Update visit outcome status (COMPLETED, NO_SHOW) |
+| `POST` | `/api/v1/handoffs` | Buyer / Staff | Request or create a human handoff |
+| `POST` | `/api/v1/conversations/{conversation_id}/handoff` | Buyer / Staff | Escalate a conversation to human executive |
+| `GET` | `/api/v1/handoffs` | Authenticated | Paginated handoffs listing with filters (role-isolated) |
+| `GET` | `/api/v1/handoffs/{handoff_id}` | Authenticated | Retrieve handoff details (role-isolated) |
+| `POST` | `/api/v1/handoffs/{handoff_id}/assign` | Admin | Assign or reassign sales executive to handoff |
+| `PATCH` | `/api/v1/handoffs/{handoff_id}/status` | Admin / Assigned Sales Exec | Update handoff status and resolution notes |
+| `GET` | `/api/v1/notifications` | Authenticated | Paginated notifications listing with read status and type filters (role-isolated) |
+| `GET` | `/api/v1/notifications/unread-count` | Authenticated | Summary of unread notifications for current user |
+| `GET` | `/api/v1/notifications/{notification_id}` | Authenticated | Retrieve notification details (role-isolated) |
+| `PATCH` | `/api/v1/notifications/{notification_id}/read` | Authenticated | Mark a single notification as read |
+| `POST` | `/api/v1/notifications/mark-all-read` | Authenticated | Mark all unread notifications as read for current user |
+| `POST` | `/api/v1/notifications/reminders/trigger` | Admin | Manually trigger due reminder scan |
+| `GET` | `/api/v1/dashboard/summary` | Admin / Sales Exec | Role-scoped operational summary |
+| `GET` | `/api/v1/dashboard/trends` | Admin / Sales Exec | Role-scoped trend series (`DAY`, `WEEK`, `MONTH`) |
+| `GET` | `/api/v1/dashboard/sources` | Admin | Source performance and cost per completed visit |
+| `GET` | `/api/v1/dashboard/executives` | Admin | Sales executive performance table |
+| `POST` | `/api/v1/dashboard/marketing-spend` | Admin | Record marketing spend |
+| `GET` | `/api/v1/dashboard/marketing-spend` | Admin | Paginated marketing spend listing |
+| `GET` | `/api/v1/dashboard/marketing-spend/{spend_id}` | Admin | Marketing spend detail |
+| `PATCH` | `/api/v1/dashboard/marketing-spend/{spend_id}` | Admin | Update marketing spend |
+| `DELETE` | `/api/v1/dashboard/marketing-spend/{spend_id}` | Admin | Delete marketing spend |
+| `GET` | `/docs` | Public | Swagger UI |
+
+Example registration:
+
+```powershell
+$body = @{
+  full_name = "Example Buyer"
+  email = "buyer@example.com"
+  password = "<your-strong-password>"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:8000/api/v1/auth/register `
+  -ContentType application/json `
+  -Body $body
+```
+
+Example login:
+
+```powershell
+$body = @{
+  email = "buyer@example.com"
+  password = "<your-strong-password>"
+} | ConvertTo-Json
+
+$token = Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:8000/api/v1/auth/login `
+  -ContentType application/json `
+  -Body $body
+
+Invoke-RestMethod `
+  -Uri http://127.0.0.1:8000/api/v1/auth/me `
+  -Headers @{ Authorization = "Bearer $($token.access_token)" }
+```
+
+## Projects and fact sheets
+
+Projects move through `DRAFT`, `ACTIVE`, and `INACTIVE`. Buyers and sales
+executives can read only `ACTIVE` projects. Project writes are admin-only, and
+`DRAFT` cannot be re-entered after publication.
+
+Facts start as `DRAFT` and are hidden from non-admin readers. Admins approve
+facts before they become eligible for buyer or AI use. Editing an approved fact
+stages the proposed category, question, and answer in `pending_*` fields; the
+previously approved content remains visible until an admin approves the staged
+edit. Rejecting a staged edit discards it. Rejecting an approved fact with no
+staged edit moves it back to `DRAFT`.
+
+Fact answer history is append-only:
+
+- Version 1 is created with the initial answer (`previous_answer = null`).
+- Each canonical answer change appends the next sequential version.
+- Category-only or question-only changes do not create duplicate answer
+  versions.
+- `(fact_id, version_number)` is unique, and updates run in transactions with a
+  fact row lock on PostgreSQL.
+- `changed_by` records the editor who proposed the published answer.
+
+Future AI code must call the service boundary instead of querying models:
+
+```python
+from app.modules.projects.service import get_approved_facts
+
+facts = get_approved_facts(session, project_id, category="LOCATION")
+```
+
+It returns only approved facts for an active project and never returns staged
+pending content. Listing endpoints support `page` and `page_size`; admins may
+filter projects/facts by `status` and facts by `category`.
+
+Errors use the shared envelope:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request validation failed",
+    "details": []
+  }
+}
+```
+
+## Conversations and messages
+
+Conversations represent dialogue threads linked to a lead, a project, and a
+registered buyer account.
+
+### Lifecycle and sender types
+
+Conversation states:
+- `ACTIVE` — Default state; messages can be added by participants.
+- `CLOSED` — Finished dialogue; posting messages is prohibited.
+- `ARCHIVED` — Administrative archive state; only administrators can transition
+  a conversation to `ARCHIVED`.
+
+Message sender types:
+- `BUYER` — Registered buyer owning the conversation.
+- `ASSISTANT` — Reserved for future AI responses.
+- `SALES_EXECUTIVE` — Assigned sales executive.
+- `SYSTEM` — System notices and administrator broadcasts.
+
+### Access control and rules
+
+- **BUYER**: Can view only their own conversations and messages. Can only post
+  messages with sender type `BUYER`. Cannot start conversations for leads
+  belonging to another user's email.
+- **SALES_EXECUTIVE**: Can view conversations and messages only for leads
+  currently assigned to them on active projects. Can only post messages with
+  sender type `SALES_EXECUTIVE`.
+- **ADMIN**: Can view and manage all conversations and messages, post as
+  `SYSTEM` or `SALES_EXECUTIVE`, and archive conversations.
+- Empty or whitespace-only messages are strictly rejected with HTTP `422`.
+- Posting to `CLOSED` or `ARCHIVED` conversations is rejected with HTTP `400`.
+- Attempts to access unauthorized conversations return HTTP `404 Not Found` to
+  prevent information leakage.
+
+### Example conversation initiation and messaging
+
+```powershell
+$headers = @{ Authorization = "Bearer $($token.access_token)" }
+
+# 1. Initiate conversation with optional initial message
+$convBody = @{
+  lead_id = "$($lead.id)"
+  project_id = "$($project.id)"
+  initial_message = "Hi, I am interested in booking a site visit."
+} | ConvertTo-Json
+
+$conv = Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:8000/api/v1/conversations `
+  -Headers $headers `
+  -ContentType application/json `
+  -Body $convBody
+
+# 2. Post a subsequent message
+$msgBody = @{
+  content = "Could you tell me about the available payment plans?"
+} | ConvertTo-Json
+
+$msg = Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/v1/conversations/$($conv.id)/messages" `
+  -Headers $headers `
+  -ContentType application/json `
+  -Body $msgBody
+
+# 3. Retrieve message history (chronological order)
+$history = Invoke-RestMethod `
+  -Uri "http://127.0.0.1:8000/api/v1/conversations/$($conv.id)/messages?order=asc" `
+  -Headers $headers
+
+# 4. Close conversation
+Invoke-RestMethod -Method Patch `
+  -Uri "http://127.0.0.1:8000/api/v1/conversations/$($conv.id)/status" `
+  -Headers $headers `
+  -ContentType application/json `
+  -Body (@{ status = "CLOSED" } | ConvertTo-Json)
+```
+
+## AI Assistant (Groq)
+
+Module 5 provides fact-grounded conversational assistance for buyers enquiring
+about real-estate offerings. The AI Assistant interacts with buyers within
+existing conversations, using the official Groq Python SDK (`openai/gpt-oss-120b`).
+
+### Strict safety rules and boundaries
+
+1. **Grounded in approved facts only**: The assistant retrieves verified project
+   facts through Module 2's `get_approved_facts()` boundary. Draft facts and
+   pending staged edits are strictly excluded from context.
+2. **Zero invented information**: The assistant never invents amenities,
+   locations, floor plans, delivery dates, or legal/RERA claims.
+3. **No price quotes or discounts**: The assistant never negotiates or promises
+   discounts. Indicative prices in approved facts are quoted as starting estimates
+   only, deferring official quotes to sales executives.
+4. **Unavailable information handling**: If a queried detail is not in approved
+   facts, the assistant politely explains that the information is currently
+   unavailable in the project fact sheet and assures the buyer a sales executive
+   will follow up.
+5. **Human escalation on request**: Buyers can request a human at any time. The
+   assistant acknowledges the request warmly and confirms that a representative
+   will connect directly.
+6. **Multilingual support**: Natively supports English, Hindi, and Gujarati,
+   replying in the language used or requested by the buyer.
+7. **Message preservation guarantee**: When a chat request is received, the
+   buyer's message is persisted and committed to the database **before** the
+   Groq API call. If Groq times out, errors, or if the API key is unconfigured,
+   the buyer's enquiry is never lost, and a graceful fallback response is saved
+   to the conversation.
+
+### Example AI chat request and response
+
+```powershell
+$headers = @{ Authorization = "Bearer $($token.access_token)" }
+
+# Chat within a conversation
+$chatBody = @{
+  message = "Where is the project located and what amenities are available?"
+} | ConvertTo-Json
+
+$chatResponse = Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/v1/conversations/$($conv.id)/chat" `
+  -Headers $headers `
+  -ContentType application/json `
+  -Body $chatBody
+
+$chatResponse.reply
+```
+
+Example response (HTTP `200`):
+
+```json
+{
+  "conversation_id": "7b8e1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b",
+  "buyer_message": {
+    "id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    "conversation_id": "7b8e1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b",
+    "sender_type": "BUYER",
+    "sender_id": "9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d",
+    "content": "Where is the project located and what amenities are available?",
+    "status": "SENT",
+    "created_at": "2026-11-04T07:00:00Z"
+  },
+  "assistant_message": {
+    "id": "2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e",
+    "conversation_id": "7b8e1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b",
+    "sender_type": "ASSISTANT",
+    "sender_id": null,
+    "content": "Skyline Residences is located in Baner, Pune, approximately 10 minutes from the highway. The project offers a swimming pool, clubhouse, and 24/7 security.",
+    "status": "SENT",
+    "created_at": "2026-11-04T07:00:02Z"
+  },
+  "reply": "Skyline Residences is located in Baner, Pune, approximately 10 minutes from the highway. The project offers a swimming pool, clubhouse, and 24/7 security."
+}
+```
+
+## Availability and site visit bookings
+
+Module 6 implements a robust, concurrency-safe site visit scheduling and reservation system.
+
+### Visit slots & availability
+- **Creation & Management (Admin only)**: Visit slots are defined with a future time range (`start_time < end_time`, `start_time > now`), capacity (1 to 50), and active flag, attached to active projects.
+- **Duplicate Prevention**: Database constraints prevent duplicate identical time slots for the same project (`uq_visit_slots_project_time_range`).
+- **Dynamic Availability**: `GET /api/v1/slots/available?project_id=...` computes available slots dynamically in real time: only upcoming slots with active status and `available_capacity = capacity - active_bookings > 0` are returned.
+
+### Site visit bookings & concurrency control
+- **Capacity Enforcement & Concurrency**: Slot reservation acquires an exclusive row lock (`SELECT ... FOR UPDATE` on PostgreSQL) on the target `visit_slots` row within a transaction. The system verifies `active_bookings < capacity` before confirming the reservation, guaranteeing capacity is never overbooked even under high concurrent load.
+- **Double-booking Prevention**: A partial unique index (`uq_bookings_lead_slot_active`) at the database level enforces that a lead cannot hold multiple active bookings on the same slot.
+- **Lead Lifecycle Synchronization**:
+  - Creating a booking transitions the lead status to `VISIT_BOOKED`.
+  - Cancelling a booking immediately releases the slot capacity and transitions the lead to `VISIT_CANCELLED` (if no other active visits remain).
+  - Marking a booking as `COMPLETED` transitions the lead status to `VISITED`.
+- **Consent Enforcement**: Booking a visit strictly requires `consent_to_contact: true` on the lead record.
+- **Role Isolation**:
+  - **BUYER**: Can view and book visits for their own leads; can view only their own bookings; can cancel their own bookings.
+  - **SALES_EXECUTIVE**: Can view bookings only for leads assigned to them on active projects; can mark visit outcomes (`COMPLETED`, `NO_SHOW`).
+  - **ADMIN**: Full visibility across all slots, bookings, and status transitions.
+
+### Example booking workflow (PowerShell)
+
+```powershell
+$headers = @{ Authorization = "Bearer $($token.access_token)" }
+
+# 1. Admin creates a visit slot (tomorrow 10:00 - 11:00 AM)
+$slotBody = @{
+  project_id = "$($project.id)"
+  start_time = "2026-11-05T10:00:00Z"
+  end_time   = "2026-11-05T11:00:00Z"
+  capacity   = 2
+  notes      = "Morning site inspection batch"
+} | ConvertTo-Json
+
+$slot = Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:8000/api/v1/slots `
+  -Headers $adminHeaders `
+  -ContentType application/json `
+  -Body $slotBody
+
+# 2. Buyer views available slots for the project
+$available = Invoke-RestMethod `
+  -Uri "http://127.0.0.1:8000/api/v1/slots/available?project_id=$($project.id)" `
+  -Headers $headers
+
+# 3. Buyer books the visit slot
+$bookingBody = @{
+  slot_id = "$($slot.id)"
+  lead_id = "$($lead.id)"
+  notes   = "Interested in 3BHK high-floor corner unit"
+} | ConvertTo-Json
+
+$booking = Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:8000/api/v1/bookings `
+  -Headers $headers `
+  -ContentType application/json `
+  -Body $bookingBody
+
+# 4. Buyer cancels booking if needed (capacity immediately restored)
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/v1/bookings/$($booking.id)/cancel" `
+  -Headers $headers `
+  -ContentType application/json `
+  -Body (@{ cancellation_reason = "Schedule conflict" } | ConvertTo-Json)
+
+# 5. Assigned executive marks site visit COMPLETED
+Invoke-RestMethod -Method Patch `
+  -Uri "http://127.0.0.1:8000/api/v1/bookings/$($booking.id)/status" `
+  -Headers $execHeaders `
+  -ContentType application/json `
+  -Body (@{ status = "COMPLETED"; notes = "Buyer toured sample flat." } | ConvertTo-Json)
+```
+
+## Human handoff
+
+Module 7 implements human escalation when buyers request a human representative or when the AI assistant cannot answer questions using approved project facts.
+
+### Lifecycle & triggers
+- **Status lifecycle**: `PENDING` -> `ASSIGNED` -> `IN_PROGRESS` -> `RESOLVED` / `CANCELLED`.
+- **Triggers**:
+  - **Buyer requested**: Buyers can escalate at any time via `POST /api/v1/handoffs` or `POST /api/v1/conversations/{id}/handoff`.
+  - **Auto-flagged by AI**: The AI chat service automatically flags conversations and creates a handoff when verified facts are unavailable or when fallback responses occur.
+- **Duplicate prevention**: A database partial unique index (`uq_handoffs_conversation_active`) and transactional check guarantee that only one active handoff (`PENDING`, `ASSIGNED`, `IN_PROGRESS`) can exist per conversation. Attempting to create a duplicate active handoff returns HTTP `409 Conflict`.
+- **Factual summary generation**: Automatically compiles a concise, 100% factual summary of recent buyer inquiries and dialogue context for the executive without extrapolating or inventing facts.
+- **Conversation notification**: Whenever a handoff is requested or assigned, an automated `SYSTEM` message is posted to the conversation thread using Module 4, informing the buyer that a sales executive has been notified.
+
+### Access control & role isolation
+- **BUYER**: Can request handoffs for their own active conversations; can view only their own handoffs.
+- **SALES_EXECUTIVE**: Can view and manage only handoffs assigned directly to them (`executive_id == current_user.id`) on active projects.
+- **ADMIN**: Can view all handoffs, filter by executive/project/status, and assign or reassign handoffs to active sales executives.
+
+### Example handoff workflow (PowerShell)
+
+```powershell
+$headers = @{ Authorization = "Bearer $($buyerToken.access_token)" }
+
+# 1. Buyer requests a human sales executive
+$body = @{
+  conversation_id = "$($conversation.id)"
+  reason = "BUYER_REQUESTED"
+  notes = "Buyer requested consultation regarding custom payment schedules."
+} | ConvertTo-Json
+
+$handoff = Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:8000/api/v1/handoffs `
+  -Headers $headers `
+  -ContentType application/json `
+  -Body $body
+
+# 2. Admin assigns handoff to a sales executive
+$adminHeaders = @{ Authorization = "Bearer $($adminToken.access_token)" }
+$assignBody = @{
+  executive_id = "$($execUser.id)"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/v1/handoffs/$($handoff.id)/assign" `
+  -Headers $adminHeaders `
+  -ContentType application/json `
+  -Body $assignBody
+
+# 3. Assigned sales executive marks handoff IN_PROGRESS
+$execHeaders = @{ Authorization = "Bearer $($execToken.access_token)" }
+Invoke-RestMethod -Method Patch `
+  -Uri "http://127.0.0.1:8000/api/v1/handoffs/$($handoff.id)/status" `
+  -Headers $execHeaders `
+  -ContentType application/json `
+  -Body (@{ status = "IN_PROGRESS" } | ConvertTo-Json)
+
+# 4. Sales executive resolves handoff with resolution notes
+$resolveBody = @{
+  status = "RESOLVED"
+  resolution_notes = "Called buyer and answered payment plan details; scheduled site visit."
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Patch `
+  -Uri "http://127.0.0.1:8000/api/v1/handoffs/$($handoff.id)/status" `
+  -Headers $execHeaders `
+  -ContentType application/json `
+  -Body $resolveBody
+```
+
+### Notifications & Reminders (Module 8)
+
+Keylo provides in-app notifications generated from domain events (lead assignment, handoff escalation and resolution, site visit booking confirmation and cancellation) alongside automated background reminders dispatched at **24 hours and 2 hours** prior to scheduled site visits. Duplicate deliveries are strictly prevented through database idempotency constraints (`uq_notifications_idempotency_key`), and buyer contact opt-out consents are honored.
+
+Example checking notifications and unread count:
+
+```powershell
+# 1. Check unread count
+$unread = Invoke-RestMethod -Method Get `
+  -Uri "http://127.0.0.1:8000/api/v1/notifications/unread-count" `
+  -Headers $buyerHeaders
+
+Write-Host "Unread notifications: $($unread.unread_count)"
+
+# 2. List unread notifications
+$notifications = Invoke-RestMethod -Method Get `
+  -Uri "http://127.0.0.1:8000/api/v1/notifications?is_read=false&page=1&page_size=10" `
+  -Headers $buyerHeaders
+
+# 3. Mark single notification as read
+$firstNotifId = $notifications.items[0].id
+Invoke-RestMethod -Method Patch `
+  -Uri "http://127.0.0.1:8000/api/v1/notifications/$firstNotifId/read" `
+  -Headers $buyerHeaders
+
+# 4. Mark all remaining notifications as read
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/v1/notifications/mark-all-read" `
+  -Headers $buyerHeaders
+```
+
+### Notifications & Reminders (Module 8)
+
+Keylo provides in-app notifications generated from domain events (lead assignment, handoff escalation and resolution, site visit booking confirmation and cancellation) alongside automated background reminders dispatched at **24 hours and 2 hours** prior to scheduled site visits. Duplicate deliveries are strictly prevented through database idempotency constraints (`uq_notifications_idempotency_key`), and buyer contact opt-out consents are honored.
+
+Example checking notifications and unread count:
+
+```powershell
+# 1. Check unread count
+$unread = Invoke-RestMethod -Method Get `
+  -Uri "http://127.0.0.1:8000/api/v1/notifications/unread-count" `
+  -Headers $buyerHeaders
+
+Write-Host "Unread notifications: $($unread.unread_count)"
+
+# 2. List unread notifications
+$notifications = Invoke-RestMethod -Method Get `
+  -Uri "http://127.0.0.1:8000/api/v1/notifications?is_read=false&page=1&page_size=10" `
+  -Headers $buyerHeaders
+
+# 3. Mark single notification as read
+$firstNotifId = $notifications.items[0].id
+Invoke-RestMethod -Method Patch `
+  -Uri "http://127.0.0.1:8000/api/v1/notifications/$firstNotifId/read" `
+  -Headers $buyerHeaders
+
+# 4. Mark all remaining notifications as read
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/v1/notifications/mark-all-read" `
+  -Headers $buyerHeaders
+```
+
+## Dashboard and analytics
+
+Module 9 adds role-scoped analytics and an admin-managed marketing spend ledger.
+Aggregation runs in the database; only aggregate result sets are loaded (the
+median query reads at most two ordered rows).
+
+### Endpoints and access
+
+- `GET /api/v1/dashboard/summary` — Admin and Sales Executive.
+- `GET /api/v1/dashboard/trends` — Admin and Sales Executive.
+- `GET /api/v1/dashboard/sources` — Admin only.
+- `GET /api/v1/dashboard/executives` — Admin only.
+- `POST`, `GET`, `PATCH`, `DELETE /api/v1/dashboard/marketing-spend` — Admin only.
+
+Analytics endpoints accept `date_from`, `date_to`, and `project_id`. Trends also
+accept `granularity` (`DAY`, `WEEK` with Monday start, or `MONTH`). Timestamps
+are normalized to UTC and `date_from` must not be after `date_to`.
+
+Sales executives receive only leads actively assigned to them, bookings where
+they are `executive_id`, and handoffs assigned to them on active projects. Their
+lead cohort is the set of currently assigned leads, which is the denominator for
+their lead-to-visit and lead-conversion rates.
+
+### Metric definitions
+
+- `total_leads`: leads created in the date range.
+- `new_leads`: cohort leads currently `NEW`.
+- `assigned_leads`: cohort leads with an active assignment.
+- `bookings`: bookings created in the date range.
+- `completed_visits` / `no_show_visits`: bookings with that status whose visit
+  slot starts in the date range.
+- `cancelled_bookings`: cancelled bookings whose `cancelled_at` is in range.
+- `conversions`: cohort leads currently `CONVERTED`.
+- `lead_to_visit_conversion_rate`: distinct cohort leads with at least one
+  booking divided by cohort `total_leads`.
+- `site_visit_show_up_rate`: completed visits divided by completed plus no-show
+  visits.
+- `lead_conversion_rate`: cohort conversions divided by cohort `total_leads`.
+- `cost_per_visit`: source marketing spend divided by source completed visits.
+- `average_first_response_seconds` / `median_first_response_seconds`: seconds
+  from a lead's first `BUYER` message to the first later `ASSISTANT` or
+  `SALES_EXECUTIVE` message, with `first_response_sample_size` reported.
+
+Rates return `0.0` when their denominator is zero. Response-time and
+cost-per-visit values return `null` when undefined.
+
+### Marketing spend
+
+`marketing_spends` stores `source`, inclusive `period_start` / `period_end`,
+`amount`, optional `notes`, and optional `project_id`. Project-attributed spend
+applies only to that project. Developer-wide spend (`project_id IS NULL`) is
+included only when no project filter is active. Spend is matched by period
+overlap and the full amount is counted without proration. Inverted periods,
+negative amounts, and nonexistent projects are rejected.
+
+## Tests
+
+```powershell
+pytest
+```
+
+Useful variants:
+
+```powershell
+pytest -q
+pytest tests/unit
+pytest tests/integration
+pytest tests/integration/test_auth.py
+pytest tests/integration/test_authorization.py
+pytest tests/integration/test_users.py
+pytest tests/integration/test_projects.py
+pytest tests/integration/test_facts.py
+pytest tests/integration/test_leads.py
+pytest tests/integration/test_conversations.py
+pytest tests/unit/test_ai_assistant_unit.py
+pytest tests/integration/test_ai_assistant.py
+pytest tests/integration/test_bookings.py
+pytest tests/integration/test_handoffs.py
+pytest tests/integration/test_notifications.py
+pytest tests/integration/test_dashboard.py
+```
+
+The suite forces testing configuration before importing the app, uses a fresh
+in-memory SQLite database with dependency overrides, seeds roles only in the
+isolated test database, and never connects to the developer or production
+database. It covers project lifecycle, slug conflicts, fact approval/rejection,
+staged approved-fact edits, draft visibility, sequential and deduplicated
+version history, role restrictions, and approved-facts retrieval. PostgreSQL
+migrations and live endpoints are verified separately.
+
+## Layout
+
+```text
+app/
+├── main.py                 FastAPI factory, root endpoint, lifespan
+├── core/                   Settings, logging, exception handling
+├── db/                     Declarative Base, engine, sessions, get_db
+├── api/v1/                 Versioned router and health endpoints
+└── modules/
+    ├── auth/               JWT/password security, login, dependencies, router
+    ├── users/              Roles/users models, repository, service, router
+    ├── projects/           Projects, facts, versions, approval, AI boundary
+    ├── leads/              Leads, duplicate detection, assignments, lifecycle
+    ├── conversations/      Dialogue threads, lifecycle, access control
+    ├── messages/           Message models, repository, direct queries
+    ├── ai_assistant/       Groq client adapter, prompts, AI chat service
+    ├── bookings/           Visit slots, availability, site visit booking
+    ├── handoffs/           Human escalation, executive assignment, summaries
+    ├── notifications/      In-app alerts, visit reminders, idempotency, scheduler
+    └── dashboard/          Role-scoped analytics and marketing spend ledger
+alembic/                    Migration environment and versions
+scripts/                    Role seeding and first-admin provisioning
+tests/                      Unit and integration tests
+docker-compose.yml          PostgreSQL 16 with a persistent volume
+```
+
+## Limitations
+
+- Access tokens only: no server-side logout or revocation list. *(Addressed: login now issues a refresh token; `/auth/logout` and `/auth/revoke-all` revoke refresh tokens server-side, and revoked access-token JTIs are rejected before expiry.)*
+- No email verification or password reset yet. Public users remain
+  `is_verified=false`.
+- The three roles are fixed for the MVP; role CRUD is not exposed.
+- Account deletion is not implemented; deactivation is used instead.
+- Project/fact deletion is not implemented; facts are rejected/unpublished
+  instead of deleted. *(Addressed: administrators can now hard-delete projects and facts via `DELETE /api/v1/projects/{project_id}` and `DELETE /api/v1/facts/{fact_id}`. Deletion is refused with `409` while dependent records exist.)*
+- Fact version history tracks answers only. Category/question changes update the
+  fact audit fields but do not create version rows.
+- Fact categories are free-form uppercase labels until an agreed allowlist is
+  introduced.
+- No external calendar integration (Google Calendar/Outlook), payment collection,
+  external messaging (WhatsApp/SMS), or external notification service is
+  implemented yet; approved-facts, lead-management, conversation, AI Assistant,
+  booking, human handoff, notification, and dashboard boundaries exist.
+- Dashboard trends include only buckets that contain data. Marketing spend is
+  matched by period overlap and is not prorated. First-response statistics
+  exclude leads with no later `ASSISTANT` or `SALES_EXECUTIVE` reply.
+- Synchronous database access by design.
+- Docker Compose provides PostgreSQL only; the API runs under Uvicorn.
+- Tests use SQLite; PostgreSQL connectivity and migrations are verified manually.
+- No log rotation, metrics, tracing, or rate limiting yet.

@@ -1,0 +1,200 @@
+"""Pytest fixtures.
+
+Test configuration is forced before importing the application so the suite can
+never fall back to a developer's `.env` or normal database. Database-backed
+checks use an isolated in-memory SQLite engine through dependency overrides.
+"""
+
+from __future__ import annotations
+
+import os
+import secrets
+from collections.abc import Callable, Generator
+from uuid import uuid4
+
+from tests.support import TEST_JWT_SECRET, TEST_PASSWORD
+
+_TEST_ENVIRONMENT = {
+    "APP_NAME": "PropFlow API",
+    "ENVIRONMENT": "testing",
+    "API_VERSION": "v1",
+    "DEBUG": "false",
+    "DATABASE_URL": (
+        "postgresql+psycopg2://propflow_test:"
+        f"{secrets.token_urlsafe(16)}@localhost:5432/propflow_test"
+    ),
+    "CORS_ALLOWED_ORIGINS": '["http://testserver"]',
+    "LOG_LEVEL": "WARNING",
+    "JWT_SECRET_KEY": TEST_JWT_SECRET,
+    "ACCESS_TOKEN_EXPIRE_MINUTES": "30",
+    # Disable SQLAlchemy C extension: it is not thread-safe for concurrent
+    # access to the shared in-memory SQLite connection (StaticPool) used by the
+    # isolated test suite, which causes intermittent IndexError failures in
+    # tests such as test_concurrent_duplicate_creation.
+    "SQLALCHEMY_USE_CEXTENSION": "0",
+}
+os.environ.update(_TEST_ENVIRONMENT)
+
+import pytest  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine, select  # noqa: E402
+from sqlalchemy.engine import Engine  # noqa: E402
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
+from app.core.config import Settings  # noqa: E402
+from app.db.base import Base  # noqa: E402
+from app.db.session import get_db  # noqa: E402
+from app.main import app, create_app  # noqa: E402
+from app.modules.auth.service import create_user_with_role  # noqa: E402
+from app.modules.tenancy.models import Tenant  # noqa: E402
+from app.modules.users.models import RoleName, User  # noqa: E402
+from app.modules.users.service import seed_roles  # noqa: E402
+
+
+@pytest.fixture(scope="session")
+def test_settings() -> Settings:
+    return Settings(_env_file=None)
+
+
+@pytest.fixture(scope="session")
+def client() -> Generator[TestClient, None, None]:
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture()
+def sqlite_engine() -> Generator[Engine, None, None]:
+    """Create a fresh in-memory database for each test that needs one."""
+
+    test_engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=test_engine)
+    try:
+        yield test_engine
+    finally:
+        Base.metadata.drop_all(bind=test_engine)
+        test_engine.dispose()
+
+
+@pytest.fixture()
+def test_session_factory(
+    sqlite_engine: Engine,
+) -> sessionmaker[Session]:
+    return sessionmaker(
+        bind=sqlite_engine,
+        autoflush=False,
+        expire_on_commit=False,
+    )
+
+
+@pytest.fixture()
+def override_db(
+    test_session_factory: sessionmaker[Session],
+) -> Generator[None, None, None]:
+    """Replace the application's database dependency with the test database."""
+
+    def _get_db() -> Generator[Session, None, None]:
+        session = test_session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = _get_db
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture()
+def seeded_roles(
+    test_session_factory: sessionmaker[Session],
+) -> None:
+    """Seed the three built-in roles into the isolated test database."""
+
+    with test_session_factory() as session:
+        seed_roles(session)
+
+
+@pytest.fixture()
+def default_tenant(test_session_factory: sessionmaker[Session]) -> Tenant:
+    """Provide the same default organization to legacy test users."""
+
+    with test_session_factory() as session:
+        tenant = Tenant(slug="default", name="Default Tenant")
+        session.add(tenant)
+        session.commit()
+        session.refresh(tenant)
+        return tenant
+
+
+@pytest.fixture()
+def user_factory(
+    test_session_factory: sessionmaker[Session],
+    seeded_roles: None,
+    default_tenant: Tenant,
+) -> Callable[..., User]:
+    """Create users directly through the trusted provisioning path."""
+
+    def _create(
+        *,
+        role: RoleName = RoleName.BUYER,
+        email: str | None = None,
+        password: str = TEST_PASSWORD,
+        full_name: str = "Test User",
+        phone: str | None = None,
+        is_active: bool = True,
+        tenant: Tenant | None = None,
+    ) -> User:
+        normalized_email = email or (
+            f"{role.value.lower()}-{uuid4().hex[:10]}@example.com"
+        )
+        with test_session_factory() as session:
+            return create_user_with_role(
+                session,
+                full_name=full_name,
+                email=normalized_email,
+                password=password,
+                phone=phone,
+                role_name=role,
+                is_active=is_active,
+                tenant_id=(tenant or default_tenant).id,
+            )
+
+    return _create
+
+
+@pytest.fixture()
+def auth_headers(
+    client: TestClient,
+    override_db: None,
+    seeded_roles: None,
+) -> Callable[..., dict[str, str]]:
+    """Log in a user and return a bearer authorization header."""
+
+    def _headers(
+        email: str,
+        password: str = TEST_PASSWORD,
+    ) -> dict[str, str]:
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": password},
+        )
+        assert response.status_code == 200, response.text
+        token = response.json()["access_token"]
+        return {"Authorization": f"Bearer {token}"}
+
+    return _headers
+
+
+@pytest.fixture()
+def isolated_app(test_settings: Settings) -> FastAPI:
+    """A fresh application instance for tests that add temporary routes."""
+
+    return create_app(test_settings)

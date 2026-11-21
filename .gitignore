@@ -1,0 +1,50 @@
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Logs and local databases
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Frontend dependencies and build output
+node_modules/
+frontend/dist/
+
+# E2E verification screenshots and generated test reports
+e2e-screenshots/
+e2e-artifacts/
+playwright-report/
+playwright-report-*/
+test-results/
+
+# Local agent worktrees, backups, and temporary tooling
+.claude/worktrees/
+.claude/backups/

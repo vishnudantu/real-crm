@@ -1,0 +1,320 @@
+import { lazy, Suspense, useEffect, useRef } from "react";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TenantProvider, useTenant } from "./tenant/TenantProvider";
+import { Benefits } from "./components/Benefits";
+import { PublicLanding } from "./components/PublicLanding";
+import { Challenges } from "./components/Challenges";
+import { DemoCTA } from "./components/DemoCTA";
+import { Footer } from "./components/Footer";
+import { Hero } from "./components/Hero";
+import { Navigation } from "./components/Navigation";
+import { ProductShowcase } from "./components/ProductShowcase";
+import { Workflow } from "./components/Workflow";
+import { DpdPPage } from "./pages/DpdPPage";
+import { LoginPage } from "./pages/LoginPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
+import { RegisterPage } from "./pages/RegisterPage";
+import { AdminAuthGuard } from "./admin/AdminAuthGuard";
+import { AdminLayout } from "./admin/AdminLayout";
+import { AdminOverviewPage } from "./admin/AdminOverviewPage";
+import { UserManagementPage } from "./admin/UserManagementPage";
+import { ProjectManagementPage } from "./admin/ProjectManagementPage";
+import { VisitManagementPage } from "./admin/VisitManagementPage";
+import { AnalyticsDashboardPage } from "./admin/AnalyticsDashboardPage";
+import { SystemSettingsPage } from "./admin/SystemSettingsPage";
+
+const SaleBookingsPage = lazy(() =>
+  import("./admin/sales/SaleBookingsPage").then((module) => ({
+    default: module.SaleBookingsPage,
+  })),
+);
+import { BuyerAuthGuard } from "./buyer/BuyerAuthGuard";
+import { BuyerLayout } from "./buyer/BuyerLayout";
+import { BuyerDashboardPage } from "./buyer/BuyerDashboardPage";
+import { ConversationsPage } from "./buyer/ConversationsPage";
+import { SiteVisitsPage } from "./buyer/SiteVisitsPage";
+import { ProjectInfoPage } from "./buyer/ProjectInfoPage";
+import { ProfilePage } from "./buyer/ProfilePage";
+import { SalesAuthGuard } from "./sales/SalesAuthGuard";
+import { SalesLayout } from "./sales/SalesLayout";
+import { SalesDashboardPage } from "./sales/SalesDashboardPage";
+import { SalesLeadsPage } from "./sales/SalesLeadsPage";
+import { SalesNotificationsPage } from "./sales/SalesNotificationsPage";
+import { SalesProfilePage } from "./sales/SalesProfilePage";
+import { SalesConversationsPage } from "./sales/SalesConversationsPage";
+import { SalesVisitsPage } from "./sales/SalesVisitsPage";
+import { SalesFollowUpsPage } from "./sales/SalesFollowUpsPage";
+import { LoaderCircle } from "lucide-react";
+
+const OperatorLoginPage = lazy(() =>
+  import("./operator/OperatorLoginPage").then((module) => ({
+    default: module.OperatorLoginPage,
+  })),
+);
+const OperatorAuthGuard = lazy(() =>
+  import("./operator/OperatorAuthGuard").then((module) => ({
+    default: module.OperatorAuthGuard,
+  })),
+);
+const OperatorLayout = lazy(() =>
+  import("./operator/OperatorLayout").then((module) => ({
+    default: module.OperatorLayout,
+  })),
+);
+const OperatorTenantsPage = lazy(() =>
+  import("./operator/OperatorTenantsPage").then((module) => ({
+    default: module.OperatorTenantsPage,
+  })),
+);
+const OperatorProvisionPage = lazy(() =>
+  import("./operator/OperatorProvisionPage").then((module) => ({
+    default: module.OperatorProvisionPage,
+  })),
+);
+const OperatorTenantDetailPage = lazy(() =>
+  import("./operator/OperatorTenantDetailPage").then((module) => ({
+    default: module.OperatorTenantDetailPage,
+  })),
+);
+const OperatorPlansPage = lazy(() =>
+  import("./operator/OperatorPlansPage").then((module) => ({
+    default: module.OperatorPlansPage,
+  })),
+);
+const OperatorUsersPage = lazy(() =>
+  import("./operator/OperatorUsersPage").then((module) => ({
+    default: module.OperatorUsersPage,
+  })),
+);
+const OperatorAuditLogsPage = lazy(() =>
+  import("./operator/OperatorAuditLogsPage").then((module) => ({
+    default: module.OperatorAuditLogsPage,
+  })),
+);
+const OperatorRouteGuard = lazy(() =>
+  import("./operator/OperatorRouteGuard").then((module) => ({
+    default: module.OperatorRouteGuard,
+  })),
+);
+const OperatorNoAccessPage = lazy(() =>
+  import("./operator/OperatorRouteGuard").then((module) => ({
+    default: module.OperatorNoAccessPage,
+  })),
+);
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 30,
+      retry: 1,
+    },
+  },
+});
+
+function ScrollToTopOnRouteChange() {
+  const { pathname } = useLocation();
+  const previousPathname = useRef(pathname);
+
+  useEffect(() => {
+    if (previousPathname.current === pathname) return;
+
+    window.scrollTo(0, 0);
+    previousPathname.current = pathname;
+  }, [pathname]);
+
+  return null;
+}
+
+function RouteLoadingFallback() {
+  return (
+    <div
+      role="status"
+      className="flex min-h-svh items-center justify-center gap-2 bg-ivory text-sm text-charcoal/65"
+    >
+      <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+      Loading operator console…
+    </div>
+  );
+}
+
+function HomePage() {
+  const { isUsingDefaults } = useTenant();
+  if (!isUsingDefaults) return <PublicLanding />;
+
+  return (
+    <>
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-charcoal focus:px-5 focus:py-3 focus:text-sm focus:font-semibold focus:text-ivory"
+      >
+        Skip to content
+      </a>
+      <Navigation />
+      <main id="main">
+        <Hero />
+        <Challenges />
+        <ProductShowcase />
+        <Workflow />
+        <Benefits />
+        <DemoCTA />
+      </main>
+      <Footer />
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <TenantProvider>
+        <ScrollToTopOnRouteChange />
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/privacy" element={<DpdPPage />} />
+          <Route
+            path="/operator/login"
+            element={
+              <Suspense fallback={<RouteLoadingFallback />}>
+                <OperatorLoginPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/operator"
+            element={
+              <Suspense fallback={<RouteLoadingFallback />}>
+                <OperatorAuthGuard />
+              </Suspense>
+            }
+          >
+            <Route
+              element={
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <OperatorLayout />
+                </Suspense>
+              }
+            >
+              <Route
+                index
+                element={
+                  <OperatorRouteGuard>
+                    <OperatorTenantsPage />
+                  </OperatorRouteGuard>
+                }
+              />
+              <Route
+                path="tenants/new"
+                element={
+                  <OperatorRouteGuard permission="tenants.write">
+                    <OperatorProvisionPage />
+                  </OperatorRouteGuard>
+                }
+              />
+              <Route
+                path="tenants/:tenantId"
+                element={
+                  <OperatorRouteGuard permission="tenants.read">
+                    <OperatorTenantDetailPage />
+                  </OperatorRouteGuard>
+                }
+              />
+              <Route
+                path="plans"
+                element={
+                  <OperatorRouteGuard permission="tenants.read">
+                    <OperatorPlansPage />
+                  </OperatorRouteGuard>
+                }
+              />
+              <Route
+                path="operators"
+                element={
+                  <OperatorRouteGuard permission="operators.manage">
+                    <OperatorUsersPage />
+                  </OperatorRouteGuard>
+                }
+              />
+              <Route
+                path="audit-logs"
+                element={
+                  <OperatorRouteGuard permission="audit.read">
+                    <OperatorAuditLogsPage />
+                  </OperatorRouteGuard>
+                }
+              />
+              <Route path="access" element={<OperatorNoAccessPage />} />
+              <Route path="*" element={<Navigate to="/operator" replace />} />
+            </Route>
+          </Route>
+          <Route path="/admin" element={<AdminAuthGuard />}>
+            <Route element={<AdminLayout />}>
+              <Route index element={<AdminOverviewPage />} />
+              <Route path="overview" element={<AdminOverviewPage />} />
+              <Route path="users" element={<UserManagementPage />} />
+              <Route path="projects" element={<ProjectManagementPage />} />
+              <Route path="visits" element={<VisitManagementPage />} />
+              <Route path="analytics" element={<AnalyticsDashboardPage />} />
+              <Route
+                path="sales-bookings"
+                element={
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <SaleBookingsPage />
+                  </Suspense>
+                }
+              />
+              <Route path="settings" element={<SystemSettingsPage />} />
+              <Route
+                path="audit-logs"
+                element={<SystemSettingsPage initialTab="audit_logs" />}
+              />
+              <Route path="*" element={<Navigate to="/admin" replace />} />
+            </Route>
+          </Route>
+          <Route path="/sales" element={<SalesAuthGuard />}>
+            <Route element={<SalesLayout />}>
+              <Route index element={<SalesDashboardPage />} />
+              <Route path="overview" element={<SalesDashboardPage />} />
+              <Route path="leads" element={<SalesLeadsPage />} />
+              <Route
+                path="conversations"
+                element={<SalesConversationsPage />}
+              />
+              <Route path="visits" element={<SalesVisitsPage />} />
+              <Route path="follow-ups" element={<SalesFollowUpsPage />} />
+              <Route
+                path="notifications"
+                element={<SalesNotificationsPage />}
+              />
+              <Route path="profile" element={<SalesProfilePage />} />
+              <Route path="*" element={<Navigate to="/sales" replace />} />
+            </Route>
+          </Route>
+          <Route path="/buyer" element={<BuyerAuthGuard />}>
+            <Route element={<BuyerLayout />}>
+              <Route index element={<BuyerDashboardPage />} />
+              <Route path="overview" element={<BuyerDashboardPage />} />
+              <Route path="conversations" element={<ConversationsPage />} />
+              <Route path="visits" element={<SiteVisitsPage />} />
+              <Route path="project" element={<ProjectInfoPage />} />
+              <Route path="profile" element={<ProfilePage />} />
+            </Route>
+          </Route>
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+        </TenantProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
+  );
+}
