@@ -21,6 +21,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -177,6 +178,14 @@ class Receipt(TenantOwned, Base):
         CheckConstraint("amount_paise > 0", name="receipt_amount_positive"),
         UniqueConstraint("tenant_id", "receipt_number", name="uq_receipts_tenant_number"),
         Index("ix_receipts_tenant_paid_at", "tenant_id", "paid_at"),
+        Index(
+            "uq_receipts_tenant_idempotency_key",
+            "tenant_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+            sqlite_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -187,6 +196,7 @@ class Receipt(TenantOwned, Base):
     amount_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
     channel: Mapped[str] = mapped_column(String(24), nullable=False)
     reference: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
     received_by_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

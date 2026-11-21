@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.postsales.models import (
@@ -121,12 +122,52 @@ def receipt_total_for_installment(
     )
 
 
-def receipt_count_for_tenant(session: Session, *, tenant_id: UUID) -> int:
-    return int(
-        session.scalar(
-            select(func.count()).select_from(Receipt).where(Receipt.tenant_id == tenant_id)
+def highest_receipt_sequence(session: Session, *, tenant_id: UUID) -> int:
+    """Largest numeric suffix already issued in this tenant.
+
+    Derives the next receipt number from MAX rather than COUNT so that voided or
+    deleted rows cannot cause a reissued duplicate number. Callers must hold the
+    tenant receipt lock. Legacy rows whose number does not match the
+    ``RCPT-<digits>`` shape are ignored for the max but remain in place.
+    """
+
+    rows = session.scalars(
+        select(Receipt.receipt_number).where(Receipt.tenant_id == tenant_id)
+    ).all()
+    highest = 0
+    for number in rows:
+        prefix, _, digits = (number or "").rpartition("-")
+        if prefix == "RCPT" and digits.isdigit():
+            highest = max(highest, int(digits))
+    return highest
+
+
+def lock_receipt_allocation(session: Session, *, tenant_id: UUID) -> None:
+    """Serialize receipt numbering and installment balance updates.
+
+    PostgreSQL uses a transaction-scoped advisory lock keyed by tenant, so
+    concurrent posts across connections allocate distinct numbers and see
+    committed balances. SQLite (isolated test suite) has no advisory locks; the
+    caller's in-process lock plus a single shared connection serializes it.
+    """
+
+    if session.get_bind().dialect.name != "postgresql":
+        return
+    digest = hashlib.blake2b(f"receipts:{tenant_id}".encode(), digest_size=8).digest()
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(:key)"),
+        {"key": int.from_bytes(digest, "big", signed=True)},
+    )
+
+
+def get_receipt_by_idempotency_key(
+    session: Session, *, tenant_id: UUID, idempotency_key: str
+) -> Receipt | None:
+    return session.scalar(
+        select(Receipt).where(
+            Receipt.tenant_id == tenant_id,
+            Receipt.idempotency_key == idempotency_key,
         )
-        or 0
     )
 
 

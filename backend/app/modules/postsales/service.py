@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from threading import Lock
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.modules.leads.models import Lead, LeadStatus
@@ -37,6 +39,11 @@ from app.modules.postsales.schemas import (
     SaleBookingCreateRequest,
     SaleBookingUpdateRequest,
 )
+
+# SQLite (isolated test/dev suite) has no cross-process advisory locks; this
+# in-process lock serializes receipt posting there. PostgreSQL uses the
+# transaction-scoped pg_advisory_xact_lock instead.
+_receipt_post_lock = Lock()
 
 
 def create_booking(
@@ -159,71 +166,125 @@ def create_plan(
 
 
 def record_receipt(
-    session: Session, *, actor, payload: ReceiptCreateRequest
+    session: Session,
+    *,
+    actor,
+    payload: ReceiptCreateRequest,
+    idempotency_key: str | None = None,
 ) -> Receipt:
-    """Append a payment receipt and update the installment's paid state."""
+    """Append a payment receipt and update the installment's paid state.
 
-    installment = repository.get_installment(
-        session, payload.installment_id, tenant_id=actor.tenant_id
-    )
-    if installment is None:
-        raise InstallmentNotFoundError()
-    if installment.status in (
-        InstallmentStatus.PAID.value,
-        InstallmentStatus.WAIVED.value,
-    ):
+    Concurrency-safe: allocation of the tenant receipt number and the
+    installment balance check happen inside one locked critical section —
+    ``pg_advisory_xact_lock`` on PostgreSQL (serializes across connections),
+    a process lock on SQLite. Duplicate numbers cannot be issued; concurrent
+    posts that together exceed the outstanding balance leave exactly one
+    winner and one ``ReceiptAmountExceedsOutstandingError`` conflict. Numbers
+    are derived from the highest issued sequence, never from a row count, so
+    deleted or voided rows can never cause a reissue.
+
+    Idempotent: when ``idempotency_key`` (or ``payload.idempotency_key``) is
+    supplied, a repeated request returns the previously posted receipt without
+    creating a new ledger entry.
+    """
+
+    key = (idempotency_key or payload.idempotency_key or "").strip() or None
+
+    if key:
+        existing = repository.get_receipt_by_idempotency_key(
+            session, tenant_id=actor.tenant_id, idempotency_key=key
+        )
+        if existing is not None:
+            return existing
+
+    def _post() -> Receipt:
+        repository.lock_receipt_allocation(session, tenant_id=actor.tenant_id)
+
+        installment = repository.get_installment(
+            session, payload.installment_id, tenant_id=actor.tenant_id
+        )
+        if installment is None:
+            raise InstallmentNotFoundError()
+        if installment.status in (
+            InstallmentStatus.PAID.value,
+            InstallmentStatus.WAIVED.value,
+        ):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "This installment is already closed."
+            )
+
+        paid = repository.receipt_total_for_installment(
+            session, installment.id, tenant_id=actor.tenant_id
+        )
+        outstanding = installment.amount_paise - paid
+        if payload.amount_paise > outstanding:
+            raise ReceiptAmountExceedsOutstandingError()
+
+        number = (
+            f"RCPT-{repository.highest_receipt_sequence(session, tenant_id=actor.tenant_id) + 1:06d}"
+        )
+        receipt = Receipt(
+            tenant_id=actor.tenant_id,
+            installment_id=installment.id,
+            receipt_number=number,
+            amount_paise=payload.amount_paise,
+            channel=payload.channel.value,
+            reference=payload.reference,
+            idempotency_key=key,
+            received_by_id=actor.id,
+            paid_at=payload.paid_at or datetime.now(UTC),
+            notes=payload.notes,
+        )
+        session.add(receipt)
+
+        new_paid = paid + payload.amount_paise
+        installment.status = (
+            InstallmentStatus.PAID.value if new_paid >= installment.amount_paise
+            else InstallmentStatus.PART_PAID.value
+        )
+        session.add(installment)
+
+        # Close the sale booking when every open installment is settled.
+        plan = installment.plan
+        booking = repository.get_booking(
+            session, plan.sale_booking_id, tenant_id=actor.tenant_id
+        )
+        all_plans = booking.plans
+        open_rows = session.scalars(
+            select(Installment).where(
+                Installment.plan_id.in_([p.id for p in all_plans]),
+                Installment.status.notin_(
+                    (InstallmentStatus.PAID.value, InstallmentStatus.WAIVED.value)
+                ),
+            )
+        ).all()
+        if not open_rows:
+            booking.status = SaleStatus.CLOSED.value
+            session.add(booking)
+        session.commit()
+        session.refresh(receipt)
+        return receipt
+
+    try:
+        if session.get_bind().dialect.name == "sqlite":
+            with _receipt_post_lock:
+                return _post()
+        return _post()
+    except IntegrityError:
+        # Lost the race against a concurrent commit (duplicate number or a
+        # replayed idempotency key inserted first): return the winner or a
+        # well-defined conflict. Never leave a partial mutation behind.
+        session.rollback()
+        if key:
+            existing = repository.get_receipt_by_idempotency_key(
+                session, tenant_id=actor.tenant_id, idempotency_key=key
+            )
+            if existing is not None:
+                return existing
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "This installment is already closed."
-        )
-
-    paid = repository.receipt_total_for_installment(
-        session, installment.id, tenant_id=actor.tenant_id
-    )
-    outstanding = installment.amount_paise - paid
-    if payload.amount_paise > outstanding:
-        raise ReceiptAmountExceedsOutstandingError()
-
-    number = (
-        f"RCPT-{repository.receipt_count_for_tenant(session, tenant_id=actor.tenant_id) + 1:06d}"
-    )
-    receipt = Receipt(
-        tenant_id=actor.tenant_id,
-        installment_id=installment.id,
-        receipt_number=number,
-        amount_paise=payload.amount_paise,
-        channel=payload.channel.value,
-        reference=payload.reference,
-        received_by_id=actor.id,
-        paid_at=payload.paid_at or datetime.now(UTC),
-        notes=payload.notes,
-    )
-    session.add(receipt)
-
-    new_paid = paid + payload.amount_paise
-    installment.status = (
-        InstallmentStatus.PAID.value if new_paid >= installment.amount_paise
-        else InstallmentStatus.PART_PAID.value
-    )
-    session.add(installment)
-
-    # Close the sale booking when every open installment is settled.
-    plan = installment.plan
-    booking = repository.get_booking(session, plan.sale_booking_id, tenant_id=actor.tenant_id)
-    all_plans = booking.plans
-    open_rows = session.scalars(
-        select(Installment).where(
-            Installment.plan_id.in_([p.id for p in all_plans]),
-            Installment.status.notin_(
-                (InstallmentStatus.PAID.value, InstallmentStatus.WAIVED.value)
-            ),
-        )
-    ).all()
-    if not open_rows:
-        booking.status = SaleStatus.CLOSED.value
-        session.add(booking)
-    session.commit()
-    session.refresh(receipt)
-    return receipt
+            status.HTTP_409_CONFLICT,
+            "This payment posting conflicted with a concurrent one. Retry the request.",
+        ) from None
 
 
 def send_demand_letter(session: Session, *, actor, installment_id: UUID) -> Installment:

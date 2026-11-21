@@ -121,6 +121,14 @@ class ReceiptCreateRequest(BaseModel):
     amount_paise: int = Field(gt=0)
     channel: ReceiptChannel
     reference: str | None = Field(default=None, max_length=160)
+    idempotency_key: str | None = Field(
+        default=None,
+        max_length=160,
+        description=(
+            "Optional client-supplied key. A repeated request with the same "
+            "tenant + key returns the original receipt without a new posting."
+        ),
+    )
     notes: str | None = Field(default=None, max_length=2000)
     paid_at: datetime | None = None
 
@@ -134,6 +142,7 @@ class ReceiptResponse(BaseModel):
     amount_paise: int
     channel: ReceiptChannel
     reference: str | None
+    idempotency_key: str | None
     received_by_id: UUID | None
     paid_at: datetime
     notes: str | None
