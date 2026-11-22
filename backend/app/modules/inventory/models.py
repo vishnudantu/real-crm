@@ -7,6 +7,7 @@ from enum import StrEnum
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -48,6 +49,15 @@ class HoldState(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class DiscountStatus(StrEnum):
+    """Approval-tracked discount flag on a canonical unit."""
+
+    NONE = "NONE"
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
 class UnitEventSource(StrEnum):
     MANUAL = "MANUAL"
     HOLD = "HOLD"
@@ -77,6 +87,14 @@ class PropertyUnit(TenantOwned, Base):
     __table_args__ = (
         CheckConstraint(
             f"status IN ({_enum_values(UnitStatus)})", name="unit_status_valid"
+        ),
+        CheckConstraint(
+            f"discount_status IN ({_enum_values(DiscountStatus)})",
+            name="unit_discount_status_valid",
+        ),
+        CheckConstraint(
+            "approved_discount_paise IS NULL OR approved_discount_paise > 0",
+            name="unit_approved_discount_positive",
         ),
         CheckConstraint(
             "carpet_area_sqft IS NULL OR carpet_area_sqft > 0",
@@ -116,6 +134,13 @@ class PropertyUnit(TenantOwned, Base):
         server_default=UnitStatus.DRAFT.value,
     )
     status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Approval-wired discount fields: the amount is written only by an APPROVED
+    # DISCOUNT decision (never on REJECT); the flag tracks the request state.
+    approved_discount_paise: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    discount_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=DiscountStatus.NONE.value,
+        server_default=DiscountStatus.NONE.value,
+    )
     rera_disclosure_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()

@@ -49,6 +49,22 @@ def _create_request(client: TestClient, env: dict, *, request_type="SITE_VISIT_C
     return response.json()
 
 
+def _create_unwired_request(client: TestClient, env: dict) -> dict:
+    """Create a request for an unwired pair (audit-only lifecycle)."""
+    response = client.post(
+        "/api/v1/approvals/requests",
+        json={
+            "request_type": "DEMAND_LETTER",
+            "reference_type": "installment",
+            "reference_id": str(uuid4()),
+            "reason": "Generic lifecycle checks use an unwired pair.",
+        },
+        headers=env["sales_headers"],
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
 def _decision(client: TestClient, env: dict, request_id: str, decision="APPROVED"):
     return client.post(
         f"/api/v1/approvals/requests/{request_id}/decision",
@@ -129,7 +145,7 @@ def test_list_filters_by_status_type_and_tenant(client: TestClient, env: dict) -
 
 @pytest.mark.parametrize("decision", ["APPROVED", "REJECTED"])
 def test_admin_decision_sets_timestamp(client: TestClient, env: dict, decision: str) -> None:
-    request_id = _create_request(client, env)["id"]
+    request_id = _create_unwired_request(client, env)["id"]
     response = _decision(client, env, request_id, decision=decision)
     assert response.status_code == 200, response.text
     body = response.json()
@@ -170,14 +186,14 @@ def test_sales_executive_cannot_decide(client: TestClient, env: dict) -> None:
 def test_non_pending_request_cannot_be_decided(
     client: TestClient, env: dict, terminal_decision: str
 ) -> None:
-    request_id = _create_request(client, env)["id"]
+    request_id = _create_unwired_request(client, env)["id"]
     assert _decision(client, env, request_id, decision=terminal_decision).status_code == 200
     response = _decision(client, env, request_id)
     assert response.status_code == 400
 
 
 def test_requester_cancels_only_pending_request(client: TestClient, env: dict) -> None:
-    request_id = _create_request(client, env)["id"]
+    request_id = _create_unwired_request(client, env)["id"]
     response = client.post(
         f"/api/v1/approvals/requests/{request_id}/cancel", headers=env["sales_headers"]
     )
@@ -191,7 +207,7 @@ def test_requester_cancels_only_pending_request(client: TestClient, env: dict) -
 
 
 def test_admin_can_cancel_and_other_requester_cannot(client: TestClient, env: dict, user_factory, auth_headers) -> None:
-    request_id = _create_request(client, env)["id"]
+    request_id = _create_unwired_request(client, env)["id"]
     other_sales = user_factory(role=RoleName.SALES_EXECUTIVE)
     response = client.post(
         f"/api/v1/approvals/requests/{request_id}/cancel",
@@ -255,7 +271,7 @@ def test_cross_tenant_decision_and_cancel_return_404(
 
 
 def test_cancelled_request_cannot_be_decided(client: TestClient, env: dict) -> None:
-    request_id = _create_request(client, env)["id"]
+    request_id = _create_unwired_request(client, env)["id"]
     assert client.post(
         f"/api/v1/approvals/requests/{request_id}/cancel", headers=env["sales_headers"]
     ).status_code == 200
@@ -336,28 +352,37 @@ def test_service_rejects_non_admin_decision(env: dict) -> None:
             pytest.fail("Non-admin service decision must be forbidden.")
 
 
-def test_service_approval_records_decision_without_entity_side_effects(env: dict) -> None:
+def test_wired_decision_on_missing_entity_rejected_before_status_flip(env: dict) -> None:
     from app.modules.approvals import service
+    from app.modules.approvals.exceptions import ApprovalReferenceMissingError
     from app.modules.approvals.models import ApprovalStatus
 
     with env["factory"]() as session:
         sales = session.get(User, env["sales"].id)
         admin = session.get(User, env["admin"].id)
-        reference_id = uuid4()
         request = service.request_approval(
             session,
             actor=sales,
             request_type="SITE_VISIT_CAR",
             reference_type="booking",
-            reference_id=reference_id,
-            reason="Only the approval is recorded.",
+            reference_id=uuid4(),
+            reason="The booking no longer exists.",
         )
         assert request.id is not None
-        service.decide(session, actor=admin, request_id=request.id, decision="APPROVED")
-        session.commit()
-        assert request.status == ApprovalStatus.APPROVED.value
-        assert request.reference_id == reference_id
-        assert service.list_requests(session, tenant_id=sales.tenant_id) == [request]
+        try:
+            service.decide(session, actor=admin, request_id=request.id, decision="APPROVED")
+        except ApprovalReferenceMissingError:
+            pass
+        else:
+            pytest.fail("A wired decision on a missing entity must raise 400.")
+        session.rollback()
+        # The request stays PENDING: nothing was decided, nothing was committed.
+        reloaded = service.list_requests(
+            session, tenant_id=sales.tenant_id, status="PENDING",
+            request_type="SITE_VISIT_CAR",
+        )
+        assert [item.id for item in reloaded] == [request.id]
+        assert reloaded[0].status == ApprovalStatus.PENDING.value
 
 
 def test_migration_upgrade_and_downgrade_on_isolated_sqlite() -> None:

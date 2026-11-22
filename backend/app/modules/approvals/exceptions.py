@@ -31,3 +31,23 @@ class ApprovalDecisionForbiddenError(HTTPException):
 class ApprovalApproverNotFoundError(HTTPException):
     def __init__(self) -> None:
         super().__init__(status.HTTP_404_NOT_FOUND, "Approver not found.")
+
+
+class ApprovalReferenceMissingError(HTTPException):
+    """The referenced entity does not exist (or belongs to another tenant)."""
+
+    def __init__(self, reference_type: str) -> None:
+        super().__init__(
+            status.HTTP_400_BAD_REQUEST,
+            f"The referenced {reference_type} no longer exists; the decision was not applied.",
+        )
+
+
+class ApprovalAmountInvalidError(HTTPException):
+    """A DISCOUNT request must carry a strictly positive amount."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status.HTTP_400_BAD_REQUEST,
+            "A discount approval requires a positive amount_paise.",
+        )

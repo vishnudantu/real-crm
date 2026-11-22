@@ -10,8 +10,12 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.modules.users.models import RoleName, User
+
 from app.db.session import get_db
-from app.modules.auth.dependencies import CurrentUser
+from app.modules.approvals.schemas import ApprovalRequestResponse
+from app.modules.approvals.service import request_booking_car
+from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.bookings.models import BookingStatus
 from app.modules.bookings.schemas import (
     AvailableSlotListResponse,
@@ -23,6 +27,7 @@ from app.modules.bookings.schemas import (
     BookingRescheduleRequest,
     BookingResponse,
     BookingStatusUpdateRequest,
+    CarRequestCreateRequest,
     VisitEvidenceResponse,
     VisitEvidenceReviewRequest,
     VisitSlotCreateRequest,
@@ -53,6 +58,11 @@ from app.modules.bookings.service import (
 
 slots_router = APIRouter(prefix="/slots", tags=["slots"])
 bookings_router = APIRouter(prefix="/bookings", tags=["bookings"])
+
+CarRequestStaffUser = Annotated[
+    User,
+    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +334,35 @@ def update_booking_status_endpoint(
     return update_booking_status(
         db, actor=current_user, booking_id=booking_id, payload=payload
     )
+
+
+# ---------------------------------------------------------------------------
+# Approval-wired flows
+# ---------------------------------------------------------------------------
+
+
+@bookings_router.post(
+    "/{booking_id}/car-request",
+    response_model=ApprovalRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Request a chauffeur car for a site visit (staff only)",
+)
+def request_booking_car_endpoint(
+    booking_id: UUID,
+    payload: CarRequestCreateRequest,
+    staff: CarRequestStaffUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> ApprovalRequestResponse:
+    """Open a SITE_VISIT_CAR approval and flag the booking PENDING atomically."""
+
+    request = request_booking_car(
+        db,
+        actor=staff,
+        booking_id=booking_id,
+        reason=payload.reason,
+        approver_id=payload.approver_id,
+    )
+    return ApprovalRequestResponse.model_validate(request)
 
 
 # ---------------------------------------------------------------------------

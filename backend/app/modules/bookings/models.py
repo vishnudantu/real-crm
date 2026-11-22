@@ -39,6 +39,15 @@ class BookingStatus(StrEnum):
     NO_SHOW = "NO_SHOW"
 
 
+class CarRequestStatus(StrEnum):
+    """Approval-tracked chauffeur car request flag on a booking."""
+
+    NONE = "NONE"
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
 class EvidenceStatus(StrEnum):
     """Staff-uploaded visit evidence verification lifecycle."""
 
@@ -142,6 +151,10 @@ class Booking(TenantOwned, Base):
             f"status IN ({_quoted_values(BookingStatus)})",
             name="ck_bookings_status",
         ),
+        CheckConstraint(
+            f"car_request_status IN ({_quoted_values(CarRequestStatus)})",
+            name="ck_bookings_car_request_status",
+        ),
         Index("ix_bookings_slot_id_status", "slot_id", "status"),
         Index("ix_bookings_buyer_id_created_at", "buyer_id", "created_at"),
         Index("ix_bookings_project_id_created_at", "project_id", "created_at"),
@@ -195,6 +208,12 @@ class Booking(TenantOwned, Base):
         default=BookingStatus.CONFIRMED.value,
         server_default=BookingStatus.CONFIRMED.value,
         index=True,
+    )
+    car_request_status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=CarRequestStatus.NONE.value,
+        server_default=CarRequestStatus.NONE.value,
     )
     cancellation_reason: Mapped[str | None] = mapped_column(
         String(500), nullable=True
