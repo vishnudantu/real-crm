@@ -47,7 +47,7 @@ def test_migration_creates_and_drops_table_on_sqlite() -> None:
 
     migration = _load_migration()
     assert migration.revision == "b3c4d5e6f7a8"
-    assert migration.down_revision == "f1a2b3c4d5e6"
+    assert migration.down_revision == "a2b3c4d5e6f7"
 
     with engine.connect() as connection:
         ctx = MigrationContext.configure(connection)
