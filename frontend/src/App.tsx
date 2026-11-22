@@ -56,6 +56,21 @@ const ChannelsSettingsPage = lazy(() =>
     default: module.ChannelsSettingsPage,
   })),
 );
+const AdConnectionsPage = lazy(() =>
+  import("./integrations/AdConnectionsPage").then((module) => ({
+    default: module.AdConnectionsPage,
+  })),
+);
+const MetaPageSelectStep = lazy(() =>
+  import("./integrations/MetaPageSelectStep").then((module) => ({
+    default: module.MetaPageSelectStep,
+  })),
+);
+const GoogleAdsSelectStep = lazy(() =>
+  import("./integrations/GoogleAdsSelectStep").then((module) => ({
+    default: module.GoogleAdsSelectStep,
+  })),
+);
 const FeatureNotEnabledPage = lazy(() =>
   import("./omnichannel/FeatureNotEnabledPage").then((module) => ({
     default: module.FeatureNotEnabledPage,
@@ -338,6 +353,30 @@ export default function App() {
                 element={
                   <Suspense fallback={<RouteLoadingFallback />}>
                     <ChannelsSettingsPage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="integrations"
+                element={
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <AdConnectionsPage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="integrations/meta/select"
+                element={
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <MetaPageSelectStep />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="integrations/google/select"
+                element={
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <GoogleAdsSelectStep />
                   </Suspense>
                 }
               />

@@ -18,19 +18,32 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Allow an encrypted, short-lived account selection before project routing."""
-    op.add_column(
-        "integration_connections",
-        sa.Column("connection_status", sa.String(length=24), server_default="ACTIVE", nullable=False),
-    )
-    op.add_column(
-        "integration_connections",
-        sa.Column("pending_expires_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.alter_column("integration_connections", "project_id", nullable=True)
+    """Allow an encrypted, short-lived account selection before project routing.
+
+    Idempotent: a partially applied prior run may have created some columns.
+    """
+    from sqlalchemy import inspect as sa_inspect
+
+    inspector = sa_inspect(op.get_bind())
+    existing_columns = {col["name"] for col in inspector.get_columns("integration_connections")}
+    if "connection_status" not in existing_columns:
+        op.add_column(
+            "integration_connections",
+            sa.Column("connection_status", sa.String(length=24), server_default="ACTIVE", nullable=False),
+        )
+    if "pending_expires_at" not in existing_columns:
+        op.add_column(
+            "integration_connections",
+            sa.Column("pending_expires_at", sa.DateTime(timezone=True), nullable=True),
+        )
+    # SQLite cannot ALTER COLUMN DROP NOT NULL directly; batch mode performs the
+    # safe copy-and-move. PostgreSQL accepts it identically.
+    with op.batch_alter_table("integration_connections") as batch_op:
+        batch_op.alter_column("project_id", nullable=True)
 
 
 def downgrade() -> None:
-    op.alter_column("integration_connections", "project_id", nullable=False)
+    with op.batch_alter_table("integration_connections") as batch_op:
+        batch_op.alter_column("project_id", nullable=False)
     op.drop_column("integration_connections", "pending_expires_at")
     op.drop_column("integration_connections", "connection_status")

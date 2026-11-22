@@ -81,7 +81,10 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
   },
   {
     label: "Integrate",
-    items: [{ label: "Channels & Widget", shortLabel: "Channels", to: "/admin/channels", feature: "omnichannel_inbox" }],
+    items: [
+      { label: "Channels & Widget", shortLabel: "Channels", to: "/admin/channels", feature: "omnichannel_inbox" },
+      { label: "Ad Connections", shortLabel: "Connections", to: "/admin/integrations", feature: "connectors" },
+    ],
   },
   {
     label: "System",
