@@ -56,12 +56,17 @@ def create_oauth_state(
 def decode_oauth_state(
     token: str,
     *,
-    tenant_id: UUID,
-    admin_user_id: UUID,
     purpose: str,
+    tenant_id: UUID | None = None,
+    admin_user_id: UUID | None = None,
     settings: Settings | None = None,
 ) -> OAuthStateClaims:
-    """Validate a state and all of its authorization context, not just its signature."""
+    """Validate a state and, when given, its expected authorization context.
+
+    Browser OAuth callbacks cannot present a bearer token, so callers may
+    resolve the actor from the verified state itself; every other connection
+    endpoint must additionally pass the expected tenant and admin ids.
+    """
     config = settings or get_settings()
     try:
         payload = jwt.decode(
@@ -79,11 +84,10 @@ def decode_oauth_state(
         )
     except (jwt.PyJWTError, ValueError, TypeError, KeyError) as exc:
         raise OAuthStateError("The connection session is invalid or has expired. Start again.") from exc
-    if (
-        payload.get("type") != OAUTH_TOKEN_TYPE
-        or claims.tenant_id != tenant_id
-        or claims.admin_user_id != admin_user_id
-        or claims.purpose != purpose
-    ):
+    if payload.get("type") != OAUTH_TOKEN_TYPE or claims.purpose != purpose:
+        raise OAuthStateError("The connection session does not match this provider. Start again.")
+    if tenant_id is not None and claims.tenant_id != tenant_id:
+        raise OAuthStateError("The connection session belongs to another organization. Start again.")
+    if admin_user_id is not None and claims.admin_user_id != admin_user_id:
         raise OAuthStateError("The connection session does not match this account. Start again.")
     return claims

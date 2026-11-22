@@ -65,16 +65,6 @@ def provider_configuration(settings: Settings, provider: str) -> dict[str, Any]:
     }
 
 
-def require_oauth_configuration(settings: Settings, provider: str) -> None:
-    missing = missing_oauth_settings(settings, provider)
-    if missing:
-        error = "GOOGLE_OAUTH_NOT_CONFIGURED" if provider == GOOGLE_PROVIDER else "META_OAUTH_NOT_CONFIGURED"
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail={"error": error, "missing": missing},
-        )
-
-
 def oauth_redirect_uri(settings: Settings, provider: str) -> str:
     slug = "meta" if provider == META_PROVIDER else "google"
     return f"{_secret(settings, 'oauth_redirect_base_url').rstrip('/')}/api/v1/integrations/connect/{slug}/callback"
@@ -117,8 +107,6 @@ def provider_error_message(response: httpx.Response, provider: str) -> str:
         elif isinstance(error, str):
             detail = error
         detail = detail or str(body.get("error_description") or "")
-    if response.status_code == 400 and "code" in response.url.params:
-        detail = "The authorization code was rejected or expired. Start the connection again."
     label = "Meta" if provider == META_PROVIDER else "Google"
     safe_detail = re.sub(r"(?i)(access_token=)[^\s&'\"]+", r"\1[redacted]", detail)
     return f"{label} could not complete the request ({response.status_code}). {safe_detail or 'Please try again.'}"[:1000]

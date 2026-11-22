@@ -47,6 +47,12 @@ class ProviderConfigurationResponse(BaseModel):
     instructions_url: str
 
 
+class ConnectUrlResponse(BaseModel):
+    """The provider authorization URL for a browser-triggered OAuth start."""
+
+    url: str
+
+
 class MetaPageSelection(BaseModel):
     id: str
     name: str
