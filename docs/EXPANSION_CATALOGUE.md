@@ -188,6 +188,37 @@ workspace, buyer portal, and operator console.
 
 ---
 
+## Commercial model: per-module enablement + module-count pricing (product owner directive)
+
+Every module can be enabled or disabled per tenant from the operator console,
+and a customer's price depends on how many modules they have enabled.
+
+**Foundation that already exists (verified):**
+- `operator/features.py` `FEATURE_CATALOG`: 16 stable-keyed `FeatureSpec`s, each
+  default-off unless stated, so new capabilities never auto-activate for tenants.
+- `operator/feature_models.py` `TenantFeature`: per-tenant operator override
+  (enabled flag, reason, set_by_email).
+- Resolution order: operator override → plan `features` map → catalog default
+  (`features.resolve_features` / `feature_enabled`).
+- `operator/feature_gate.py`: dependency to enforce a feature at route level.
+- `plans.Plan.features` JSON: what each plan bundles.
+
+**Gaps to implement the module-count pricing model:**
+1. Per-module pricing: `FeatureSpec` has no price field; `Plan` has a single flat
+   `price_paise`. Add a per-feature price (paise) to the catalog and/or plan.
+2. Price computation: a service that sums prices of the tenant's *enabled*
+   modules into the invoice amount instead of a flat plan price.
+3. Catalog growth: the 16 keys do not cover the new modules (documents, connect/
+   voice, buyervault, architecture, spatial, etc.). Each new module must add a
+   `FeatureSpec` and gate its router with the key as it ships. Documents
+   currently has no feature gate.
+4. Billing sync: recompute the Razorpay subscription/invoice amount whenever the
+   operator changes a tenant's module set.
+
+This is an extension of existing operator+billing scaffolding, not a rebuild.
+
+---
+
 ## Sequencing guidance for the orchestrator
 
 Immediate (actively blocking the user today):
