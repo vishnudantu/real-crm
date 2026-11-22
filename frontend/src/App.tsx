@@ -32,6 +32,10 @@ import { VisitManagementPage } from "./admin/VisitManagementPage";
 import { AnalyticsDashboardPage } from "./admin/AnalyticsDashboardPage";
 import { SystemSettingsPage } from "./admin/SystemSettingsPage";
 import { MyAccountPage } from "./admin/MyAccountPage";
+import { CustomerDirectoryPage } from "./customers/CustomerDirectoryPage";
+import { Customer360Page } from "./customers/Customer360Page";
+import { CustomerDuplicatesPage } from "./customers/CustomerDuplicatesPage";
+import { OpportunityPipelinePage } from "./customers/OpportunityPipelinePage";
 
 const SaleBookingsPage = lazy(() =>
   import("./admin/sales/SaleBookingsPage").then((module) => ({
@@ -308,6 +312,10 @@ export default function App() {
               <Route path="overview" element={<AdminOverviewPage />} />
               <Route path="users" element={<UserManagementPage />} />
               <Route path="projects" element={<ProjectManagementPage />} />
+              <Route path="customers" element={<CustomerDirectoryPage />} />
+              <Route path="customers/:id" element={<Customer360Page />} />
+              <Route path="customers/:id/duplicates" element={<CustomerDuplicatesPage />} />
+              <Route path="opportunities" element={<OpportunityPipelinePage />} />
               <Route path="visits" element={<VisitManagementPage />} />
               <Route path="analytics" element={<AnalyticsDashboardPage />} />
               <Route
