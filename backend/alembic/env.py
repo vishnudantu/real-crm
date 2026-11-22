@@ -39,6 +39,7 @@ from app.modules.postsales import models as postsales_models  # noqa: F401
 from app.modules.projects import models as projects_models  # noqa: F401
 from app.modules.settings import models as settings_models  # noqa: F401
 from app.modules.tenancy import models as tenancy_models  # noqa: F401
+from app.modules.tenant_ai import models as tenant_ai_models  # noqa: F401
 from app.modules.teamchat import models as teamchat_models  # noqa: F401
 from app.modules.users import models  # noqa: F401
 
