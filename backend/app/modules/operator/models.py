@@ -21,6 +21,7 @@ class OperatorPermission(StrEnum):
     DEPLOYMENTS_WRITE = "deployments.write"
     OPERATORS_MANAGE = "operators.manage"
     AUDIT_READ = "audit.read"
+    TENANTS_IMPERSONATE = "tenants.impersonate"
 
 
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {

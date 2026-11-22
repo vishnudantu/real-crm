@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.modules.operator import feature_service, features, service
+from app.modules.operator import control_plane, feature_service, features, service
 from app.modules.operator.dependencies import (
     CurrentOperator,
     get_current_operator,
@@ -19,6 +19,8 @@ from app.modules.operator.dependencies import (
 )
 from app.modules.operator.models import OperatorAuditLog, OperatorPermission, OperatorUser
 from app.modules.operator.schemas import (
+    BulkFeatureUpdateRequest,
+    ImpersonationResponse,
     OperatorAuditLogResponse,
     OperatorCreateRequest,
     OperatorLoginRequest,
@@ -28,14 +30,18 @@ from app.modules.operator.schemas import (
     PlanCreateRequest,
     PlanResponse,
     PlanUpdateRequest,
+    TenantConfigPatchRequest,
+    TenantConfigResponse,
     TenantCreateRequest,
     TenantDeploymentRequest,
     TenantDeploymentResponse,
     TenantFeatureEntry,
     TenantFeatureUpdateRequest,
+    TenantHealthResponse,
     TenantOnboardRequest,
     TenantProvisionResponse,
     TenantStatusUpdateRequest,
+    TenantUsageResponse,
 )
 from app.modules.operator.security import create_operator_token
 from app.modules.plans.models import Plan
@@ -191,6 +197,68 @@ def update_tenant_status(
     return {"id": tenant.id, "slug": tenant.slug, "status": tenant.status}
 
 
+@router.get("/tenants/{tenant_id}/config", response_model=TenantConfigResponse)
+def get_tenant_config(
+    tenant_id: UUID,
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_READ))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    return control_plane.tenant_config(db, tenant_id=tenant_id)
+
+
+@router.patch("/tenants/{tenant_id}/config", response_model=TenantConfigResponse)
+def patch_tenant_config(
+    tenant_id: UUID,
+    payload: TenantConfigPatchRequest,
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_WRITE))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    control_plane.update_tenant_config(db, operator=operator, tenant_id=tenant_id, payload=payload)
+    return control_plane.tenant_config(db, tenant_id=tenant_id)
+
+
+@router.get("/tenants/{tenant_id}/usage", response_model=TenantUsageResponse)
+def get_tenant_usage(
+    tenant_id: UUID,
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_READ))],
+    db: Annotated[Session, Depends(get_db)],
+    days: int = 30,
+):
+    days = min(max(days, 1), 365)
+    return control_plane.tenant_usage(db, tenant_id=tenant_id, days=days)
+
+
+@router.get("/tenants/{tenant_id}/health", response_model=TenantHealthResponse)
+def get_tenant_health(
+    tenant_id: UUID,
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_READ))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    return control_plane.tenant_health(db, tenant_id=tenant_id)
+
+
+@router.post("/tenants/{tenant_id}/impersonate", response_model=ImpersonationResponse)
+def impersonate_tenant(
+    tenant_id: UUID,
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_IMPERSONATE))],
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    return control_plane.impersonate_tenant(db, operator=operator, tenant_id=tenant_id, settings=settings)
+
+
+@router.put("/tenants/{tenant_id}/features", response_model=list[TenantFeatureEntry])
+def bulk_update_features(
+    tenant_id: UUID,
+    payload: BulkFeatureUpdateRequest,
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_WRITE))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    return control_plane.bulk_set_features(
+        db, operator=operator, tenant_id=tenant_id, features_map=payload.features,
+    )
+
+
 @router.get("/plans", response_model=list[PlanResponse])
 def list_plans(
     operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_READ))],
@@ -232,8 +300,32 @@ def request_deployment(
 def audit_logs(
     operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.AUDIT_READ))],
     db: Annotated[Session, Depends(get_db)],
+    action: str | None = None,
+    resource_type: str | None = None,
+    actor_email: str | None = None,
+    tenant_slug: str | None = None,
+    limit: int = 200,
 ):
-    return list(db.scalars(select(OperatorAuditLog).order_by(OperatorAuditLog.created_at.desc()).limit(200)).all())
+    from sqlalchemy import or_
+
+    stmt = select(OperatorAuditLog)
+    if action is not None:
+        stmt = stmt.where(OperatorAuditLog.action == action)
+    if resource_type is not None:
+        stmt = stmt.where(OperatorAuditLog.resource_type == resource_type)
+    if actor_email is not None:
+        stmt = stmt.where(OperatorAuditLog.actor_email == actor_email)
+    if tenant_slug is not None:
+        like = f"%{tenant_slug}%"
+        stmt = stmt.where(
+            or_(
+                OperatorAuditLog.resource_id.like(like),
+                OperatorAuditLog.details["slug"].as_string().like(like),
+            )
+        )
+    limit = min(max(limit, 1), 500)
+    stmt = stmt.order_by(OperatorAuditLog.created_at.desc()).limit(limit)
+    return list(db.scalars(stmt).all())
 
 
 @router.get("/features/catalog")

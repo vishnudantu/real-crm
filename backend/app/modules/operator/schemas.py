@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, field_validator
 
@@ -203,3 +205,181 @@ class OperatorAuditLogResponse(BaseModel):
     resource_id: str | None
     details: dict
     created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Tenant config read / patch
+# ---------------------------------------------------------------------------
+
+
+class TenantPlanSummary(BaseModel):
+    id: UUID
+    code: str
+    name: str
+    price_paise: int
+
+
+class TenantBrandingSummary(BaseModel):
+    brand_name: str
+    logo_path: str | None
+    theme_json: dict
+
+
+class TenantWidgetSummary(BaseModel):
+    enabled: bool
+    embed_url: str | None
+
+
+class TenantChannelSummary(BaseModel):
+    channel: str
+    provider: str
+    is_active: bool
+    updated_at: datetime | None
+
+
+class TenantAISummary(BaseModel):
+    provider: str | None
+    model: str | None
+    configured: bool
+
+
+class TenantFeatureMatrixSummary(BaseModel):
+    enabled_count: int
+    total_count: int
+
+
+class TenantCountsSummary(BaseModel):
+    users: int
+    active_users: int
+    leads_total: int
+    projects: int
+    bookings: int
+    open_conversations: int
+
+
+class TenantConfigResponse(BaseModel):
+    id: UUID
+    slug: str
+    name: str
+    status: str
+    country: str
+    timezone: str
+    currency: str
+    plan: TenantPlanSummary | None
+    branding: TenantBrandingSummary
+    widget: TenantWidgetSummary
+    channels: list[TenantChannelSummary]
+    ai: TenantAISummary
+    features: TenantFeatureMatrixSummary
+    counts: TenantCountsSummary
+
+
+class TenantConfigPatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    brand_name: str | None = Field(default=None, min_length=1, max_length=255)
+    timezone: str | None = None
+    currency: str | None = None
+    country: str | None = Field(default=None, min_length=2, max_length=2)
+    theme_json: dict | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def _valid_timezone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        # Always require an IANA-shaped key (Area/Location or UTC).
+        if not re.fullmatch(r"(?:[A-Za-z_]+(?:/[A-Za-z0-9_+\-]+)+|UTC)", cleaned):
+            raise ValueError(f"Invalid timezone key: {value!r}")
+        try:
+            ZoneInfo(cleaned)
+            return cleaned
+        except ZoneInfoNotFoundError:
+            # When no IANA database is installed (stripped CI images), fall back
+            # to membership in available_timezones() if that set is populated;
+            # otherwise accept the syntactically-valid key.
+            if available_timezones():
+                raise ValueError(f"Unknown timezone: {value!r}") from None
+            return cleaned
+
+    @field_validator("currency")
+    @classmethod
+    def _valid_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().upper()
+        if len(cleaned) != 3 or not cleaned.isalpha():
+            raise ValueError("Currency must be an ISO-4217 three-letter code (e.g. INR).")
+        return cleaned
+
+
+# ---------------------------------------------------------------------------
+# Usage / health
+# ---------------------------------------------------------------------------
+
+
+class TenantUsageMeter(BaseModel):
+    used: int
+    limit: int | None
+    period_start: str | None
+    period_end: str | None
+    period_source: str | None
+
+
+class TenantUsageDailyPoint(BaseModel):
+    date: str
+    leads: int
+    messages_sent: int
+
+
+class TenantUsageResponse(BaseModel):
+    days: int
+    meters: dict[str, TenantUsageMeter]
+    leads_total: int
+    bookings_total: int
+    messages_sent_total: int
+    active_users: int
+    channels_active: int
+    series: list[TenantUsageDailyPoint]
+
+
+class TenantHealthCheck(BaseModel):
+    name: str
+    state: str  # green | yellow | red
+    detail: str
+
+
+class TenantHealthResponse(BaseModel):
+    tenant_id: UUID
+    overall: str  # worst state across checks
+    checks: list[TenantHealthCheck]
+
+
+# ---------------------------------------------------------------------------
+# Impersonation
+# ---------------------------------------------------------------------------
+
+
+class ImpersonatedUser(BaseModel):
+    id: UUID
+    email: str
+    full_name: str
+    role: str
+
+
+class ImpersonationResponse(BaseModel):
+    access_token: str
+    expires_in: int
+    user: ImpersonatedUser
+
+
+# ---------------------------------------------------------------------------
+# Bulk feature update
+# ---------------------------------------------------------------------------
+
+
+class BulkFeatureUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    features: dict[str, bool]
