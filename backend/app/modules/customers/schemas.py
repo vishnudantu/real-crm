@@ -23,6 +23,7 @@ from app.modules.customers.models import (
 from app.modules.leads.schemas import normalize_email, normalize_phone
 
 _BUDGET_MAX = 10**12
+_CONTACT_NOTES_MAX = 5_000
 
 
 class ContactSearchRequest(BaseModel):
@@ -71,6 +72,13 @@ class ContactMethodResponse(BaseModel):
     updated_at: datetime
 
 
+class ContactPrimaryMethod(BaseModel):
+    """Compact primary-method projection used by list enrichment."""
+
+    kind: ContactMethodKind
+    value: str
+
+
 class ContactResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -100,12 +108,87 @@ class ContactResolvePreviewResponse(BaseModel):
     normalized_phone: str | None = None
 
 
+class ContactListItem(ContactResponse):
+    """List-row projection with additive enrichment fields.
+
+    ``primary_method`` and ``opportunities_count`` are optional so older
+    clients can ignore them; the list endpoint populates both via grouped
+    queries (no per-row queries).
+    """
+
+    primary_method: ContactPrimaryMethod | None = None
+    opportunities_count: int | None = None
+
+
 class ContactListResponse(BaseModel):
-    items: list[ContactResponse]
+    items: list[ContactListItem]
     total: int
     page: int
     page_size: int
     pages: int
+
+
+class ContactCreateRequest(BaseModel):
+    """Console contact create.
+
+    Idempotency semantics: POST is idempotent by normalized email/phone —
+    an identical submission returns the SAME contact/method with
+    ``created=false`` and HTTP 200 (not 409). Only a genuinely new identity
+    returns ``created=true`` with HTTP 201.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    display_name: str = Field(min_length=2, max_length=255)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=32)
+    primary_language: str = Field(default="en", min_length=2, max_length=8)
+    notes: str | None = Field(default=None, max_length=_CONTACT_NOTES_MAX)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _normalize_email(cls, value: object) -> object:
+        return normalize_email(value)
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def _normalize_phone(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return normalize_phone(stripped) if stripped else None
+        return value
+
+    @model_validator(mode="after")
+    def _require_contact(self) -> ContactCreateRequest:
+        if self.email is None and self.phone is None:
+            raise ValueError("Provide at least one of email or phone.")
+        return self
+
+
+class ContactCreateResponse(BaseModel):
+    """Result of POST /customers/contacts."""
+
+    contact: ContactDetailResponse
+    method: ContactMethodResponse | None = None
+    created: bool
+
+
+class ContactUpdateRequest(BaseModel):
+    """Editable profile fields only.
+
+    ``status`` / ``merged_into_id`` are intentionally absent: they change only
+    through the merge/unmerge endpoints. ``extra="forbid"`` rejects attempts
+    to edit them here (422). An empty body is rejected by the service with a
+    400 so the contract is a plain HTTP error, not a schema failure.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    display_name: str | None = Field(default=None, min_length=2, max_length=255)
+    primary_language: str | None = Field(default=None, min_length=2, max_length=8)
+    notes: str | None = Field(default=None, max_length=_CONTACT_NOTES_MAX)
 
 
 class OpportunityCreateRequest(BaseModel):
@@ -202,6 +285,15 @@ class MergeResponse(BaseModel):
     evidence: dict
     reverted_at: datetime | None = None
     created_at: datetime
+
+
+class MergeListResponse(BaseModel):
+    """Result of GET /customers/merges (newest-first, tenant-scoped)."""
+
+    items: list[MergeResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 class DuplicateCandidate(BaseModel):

@@ -10,7 +10,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.customers.exceptions import (
+    ContactConflictError,
     ContactNotFoundError,
+    ContactUpdateError,
     CustomerAccessDeniedError,
     InvalidStageTransitionError,
     MergeError,
@@ -30,12 +32,15 @@ from app.modules.customers.models import (
     utcnow,
 )
 from app.modules.customers.schemas import (
+    ContactListItem,
     ContactListResponse,
+    ContactPrimaryMethod,
     ContactResponse,
     Customer360Response,
     DuplicateCandidate,
     DuplicateSuggestionsResponse,
     MergeEvidenceField,
+    MergeListResponse,
     MergeResponse,
     OpportunityListResponse,
     OpportunityResponse,
@@ -254,6 +259,152 @@ def resolve_contact(
 def _last_ten_digits(value: str) -> str:
     digits = re.sub(r"\D", "", value)
     return digits[-10:] if len(digits) >= 10 else digits
+
+
+# --------------------------------------------------------------------------- #
+# console contact create / update
+# --------------------------------------------------------------------------- #
+
+
+def create_contact(
+    session: Session,
+    *,
+    actor: User,
+    display_name: str,
+    email: str | None = None,
+    phone: str | None = None,
+    primary_language: str = "en",
+    notes: str | None = None,
+) -> tuple[Contact, ContactMethod | None, bool]:
+    """Create-or-resolve a contact from the admin console.
+
+    Idempotency contract (documented, deliberately not a 409):
+      * Resolution is the EXISTING ``resolve_contact`` exact-normalized match
+        on email first, then phone, within the tenant.
+      * A repeat submission that matches an existing contact returns that
+        contact plus the matched method with ``created=False`` (HTTP 200).
+      * A genuinely new identity creates contact + primary method with
+        ``created=True`` (HTTP 201). The canonical key is recomputed from the
+        freshly created methods at CREATE time only — later PATCHes never
+        touch ``canonical_key`` (see invariants in ``__init__.py``).
+    """
+    try:
+        contact, method, created = resolve_contact(
+            session,
+            tenant_id=actor.tenant_id,
+            email=email,
+            phone=phone,
+            display_name=display_name,
+            provenance={
+                "source": "admin_manual",
+                "actor_user_id": str(actor.id),
+                "captured_at": utcnow().isoformat(),
+                "method": "console",
+            },
+        )
+        if contact is None:  # pragma: no cover - create path always returns one
+            raise ContactConflictError("Contact could not be created.")
+
+        if created:
+            # Apply the console-only profile fields on the new row, then recompute
+            # the canonical key from the freshly created methods via the existing
+            # _canonical_key_for. This recompute happens at CREATE time ONLY, by
+            # design: PATCH never touches canonical_key and merges never change
+            # it (see the invariant in ``__init__.py``). Console methods are
+            # UNVERIFIED, so when no VERIFIED method exists the creation-time
+            # ``uuid:<uuid4>`` key assigned by resolve_contact stands.
+            contact.primary_language = primary_language
+            contact.notes = notes
+            methods = list(session.scalars(
+                select(ContactMethod).where(ContactMethod.contact_id == contact.id)
+            ).all())
+            if any(
+                m.verification_state == VerificationState.VERIFIED.value
+                for m in methods
+            ):
+                contact.canonical_key = _canonical_key_for(methods)
+        session.flush()
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        # A concurrent request won the (tenant, kind, normalized_value) race.
+        # Re-resolve once (no create) so the endpoint stays idempotent
+        # instead of 409; the identity exists now, so this is NOT a create.
+        created = False
+        contact, method, _ = resolve_contact(
+            session,
+            tenant_id=actor.tenant_id,
+            email=email,
+            phone=phone,
+            create_if_missing=False,
+        )
+        if contact is None:
+            raise ContactConflictError(
+                "Contact identity conflicts with an existing record."
+            ) from exc
+        session.commit()
+    session.refresh(contact)
+    return contact, method, created
+
+
+def update_contact(
+    session: Session,
+    *,
+    actor: User,
+    contact_id: UUID,
+    fields: dict,
+) -> Contact:
+    """PATCH editable profile fields. Status/merge linkage are not editable.
+
+    ``fields`` is the set the caller explicitly provided. A merged-away
+    contact cannot be profile-edited here (use revert first).
+    """
+    if "status" in fields or "merged_into_id" in fields:
+        raise ContactUpdateError(
+            "status and merged_into_id are not editable; use the merge endpoints."
+        )
+    if not fields:
+        raise ContactUpdateError("At least one field must be provided.")
+    for name in ("display_name", "primary_language"):
+        if name in fields and fields[name] is None:
+            raise ContactUpdateError(f"{name} cannot be null.")
+
+    contact = _get_visible_contact(session, actor=actor, contact_id=contact_id)
+    if contact.status == ContactStatus.MERGED.value:
+        raise ContactUpdateError("Contact is merged; revert the merge before editing.")
+
+    for name in ("display_name", "primary_language", "notes"):
+        if name in fields:
+            setattr(contact, name, fields[name])
+    contact.updated_at = utcnow()
+    session.commit()
+    session.refresh(contact)
+    return contact
+
+
+def list_merges(
+    session: Session, *, actor: User, limit: int, offset: int
+) -> MergeListResponse:
+    """Tenant-scoped merge history, newest first, for the revert UI."""
+    conditions = [ContactMerge.tenant_id == actor.tenant_id]
+    total = session.scalar(
+        select(func.count()).select_from(ContactMerge).where(*conditions)
+    ) or 0
+    items = list(
+        session.scalars(
+            select(ContactMerge)
+            .where(*conditions)
+            .order_by(ContactMerge.created_at.desc(), ContactMerge.id)
+            .offset(offset)
+            .limit(limit)
+        ).all()
+    )
+    return MergeListResponse(
+        items=[MergeResponse.model_validate(m) for m in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 def suggest_duplicates(
@@ -758,6 +909,57 @@ def list_opportunities(
     )
 
 
+def _primary_method_for_contacts(
+    session: Session, tenant_id: UUID, contact_ids: list[UUID]
+) -> dict[UUID, tuple[str, str]]:
+    """Batch-load primary methods (kind, value) for a page of contacts.
+
+    One query for the whole page. Deterministic when a contact carries more
+    than one ``is_primary`` row (legacy/manual data): the lexicographically
+    lowest (kind, normalized_value) primary wins.
+    """
+    if not contact_ids:
+        return {}
+    rows = session.execute(
+        select(
+            ContactMethod.contact_id,
+            ContactMethod.kind,
+            ContactMethod.value,
+        )
+        .where(
+            ContactMethod.tenant_id == tenant_id,
+            ContactMethod.contact_id.in_(contact_ids),
+            ContactMethod.is_primary.is_(True),
+        )
+        .order_by(
+            ContactMethod.contact_id,
+            ContactMethod.kind,
+            ContactMethod.normalized_value,
+        )
+    ).all()
+    primary: dict[UUID, tuple[str, str]] = {}
+    for contact_id, kind, value in rows:
+        primary.setdefault(contact_id, (kind, value))
+    return primary
+
+
+def _opportunity_counts_for_contacts(
+    session: Session, tenant_id: UUID, contact_ids: list[UUID]
+) -> dict[UUID, int]:
+    """One grouped count query for the page (avoids per-row N+1)."""
+    if not contact_ids:
+        return {}
+    rows = session.execute(
+        select(Opportunity.contact_id, func.count(Opportunity.id))
+        .where(
+            Opportunity.tenant_id == tenant_id,
+            Opportunity.contact_id.in_(contact_ids),
+        )
+        .group_by(Opportunity.contact_id)
+    ).all()
+    return {contact_id: count for contact_id, count in rows}
+
+
 def list_contacts(
     session: Session,
     *,
@@ -790,8 +992,25 @@ def list_contacts(
             .limit(page_size)
         ).all()
     )
+    # Batched enrichment: exactly two extra queries for the whole page.
+    contact_ids = [c.id for c in items]
+    primary_methods = _primary_method_for_contacts(
+        session, actor.tenant_id, contact_ids
+    )
+    opp_counts = _opportunity_counts_for_contacts(
+        session, actor.tenant_id, contact_ids
+    )
+    enriched: list[ContactListItem] = []
+    for contact in items:
+        item = ContactListItem.model_validate(contact)
+        method_pair = primary_methods.get(contact.id)
+        if method_pair is not None:
+            kind, value = method_pair
+            item.primary_method = ContactPrimaryMethod(kind=kind, value=value)
+        item.opportunities_count = opp_counts.get(contact.id, 0)
+        enriched.append(item)
     return ContactListResponse(
-        items=[ContactResponse.model_validate(c) for c in items],
+        items=enriched,
         total=total,
         page=page,
         page_size=page_size,
