@@ -1,7 +1,7 @@
 """documents: demand-letter approval gate columns (P0.3)
 
 Revision ID: e9a0b1c2d3e4
-Revises: f7a8b9c0d1e2
+Revises: e7f8a9b0c1d2
 Create Date: 2026-11-23 10:00:00
 
 Adds the delivery-gate lifecycle to documents:
@@ -24,7 +24,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "e9a0b1c2d3e4"
-down_revision: Union[str, None] = "f7a8b9c0d1e2"
+down_revision: Union[str, None] = "e7f8a9b0c1d2"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
