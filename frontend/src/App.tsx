@@ -91,6 +91,16 @@ const OperatorTenantsPage = lazy(() =>
     default: module.OperatorTenantsPage,
   })),
 );
+const OperatorMissionControlPage = lazy(() =>
+  import("./operator/OperatorMissionControlPage").then((module) => ({
+    default: module.OperatorMissionControlPage,
+  })),
+);
+const OperatorIncidentsPage = lazy(() =>
+  import("./operator/OperatorIncidentsPage").then((module) => ({
+    default: module.OperatorIncidentsPage,
+  })),
+);
 const OperatorProvisionPage = lazy(() =>
   import("./operator/OperatorProvisionPage").then((module) => ({
     default: module.OperatorProvisionPage,
@@ -228,7 +238,23 @@ export default function App() {
                 index
                 element={
                   <OperatorRouteGuard>
+                    <OperatorMissionControlPage />
+                  </OperatorRouteGuard>
+                }
+              />
+              <Route
+                path="tenants"
+                element={
+                  <OperatorRouteGuard permission="tenants.read">
                     <OperatorTenantsPage />
+                  </OperatorRouteGuard>
+                }
+              />
+              <Route
+                path="incidents"
+                element={
+                  <OperatorRouteGuard permission="tenants.read">
+                    <OperatorIncidentsPage />
                   </OperatorRouteGuard>
                 }
               />

@@ -46,6 +46,7 @@ const ROLES: { value: OperatorRole; label: string; description: string }[] = [
 const PERMISSIONS: { value: OperatorPermission; label: string }[] = [
   { value: "tenants.read", label: "Read tenants and plans" },
   { value: "tenants.write", label: "Provision and update tenants" },
+  { value: "tenants.impersonate", label: "Open tenants as admin (impersonate)" },
   { value: "plans.write", label: "Manage subscription plans" },
   { value: "deployments.write", label: "Request deployments" },
   { value: "operators.manage", label: "Manage operator accounts" },

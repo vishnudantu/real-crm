@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import {
   createOperatorPlan,
+  fetchFeatureCatalog,
   fetchOperatorPlans,
   updateOperatorPlan,
 } from "./api";
@@ -26,7 +27,7 @@ import {
   paiseToRupeesInput,
   rupeesInputToPaise,
 } from "./format";
-import type { OperatorPlan, PlanFormValues } from "./operatorModel";
+import type { FeatureCatalogEntry, OperatorPlan, PlanFormValues } from "./operatorModel";
 import {
   ErrorBlock,
   InlineNotice,
@@ -238,6 +239,20 @@ interface PlanEditorModalProps {
 
 function PlanEditorModal({ plan, onClose, onSaved }: PlanEditorModalProps) {
   const [error, setError] = useState<string | null>(null);
+  const catalogQuery = useQuery({
+    queryKey: ["operator", "feature-catalog"],
+    queryFn: fetchFeatureCatalog,
+  });
+  // Feature-bundle checkboxes over the backend catalog. Toggling a catalog
+  // feature writes it into plan.features; unknown keys stay in featureRows.
+  const [bundle, setBundle] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    for (const entry of (catalogQuery.data ?? []) as FeatureCatalogEntry[]) {
+      const value = plan?.features[entry.feature];
+      initial[entry.feature] = typeof value === "boolean" ? value : entry.default_enabled;
+    }
+    return initial;
+  });
   const {
     register,
     control,
@@ -261,7 +276,13 @@ function PlanEditorModal({ plan, onClose, onSaved }: PlanEditorModalProps) {
 
   const mutation = useMutation({
     mutationFn: async (values: PlanFormValues) => {
-      const features = featureRowsToRecord(values.featureRows);
+      const customRows = values.featureRows.filter(
+        (row) => !(catalogQuery.data ?? []).some((entry) => entry.feature === row.key.trim()),
+      );
+      const features = { ...featureRowsToRecord(customRows) };
+      for (const [key, enabled] of Object.entries(bundle)) {
+        features[key] = enabled;
+      }
       const pricePaise = rupeesInputToPaise(values.priceRupees);
       const description = values.description.trim() || null;
 
@@ -394,9 +415,60 @@ function PlanEditorModal({ plan, onClose, onSaved }: PlanEditorModalProps) {
         <div className="mt-5 border-t border-charcoal/10 pt-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-xs font-semibold text-charcoal">Feature flags</h3>
+              <h3 className="text-xs font-semibold text-charcoal">Feature bundle</h3>
               <p className="mt-0.5 text-[0.65rem] text-charcoal/50">
-                Leave a value blank to store the flag as enabled (true).
+                Toggles come from the platform feature catalog and are stored as
+                booleans in the plan's features map; tenants inherit them unless
+                a per-tenant override exists.
+              </p>
+            </div>
+          </div>
+          {catalogQuery.isLoading ? (
+            <p className="mt-3 text-[0.68rem] text-charcoal/50">Loading feature catalog…</p>
+          ) : catalogQuery.isError ? (
+            <p className="mt-3 text-[0.68rem] text-clay">
+              Feature catalog could not be loaded; the plan will save with the
+              raw feature flags below only.
+            </p>
+          ) : (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {(catalogQuery.data ?? []).map((entry) => (
+                <label
+                  key={entry.feature}
+                  className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 transition-colors ${
+                    bundle[entry.feature]
+                      ? "border-forest/30 bg-forest/5"
+                      : "border-charcoal/10 bg-white hover:border-charcoal/25"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(bundle[entry.feature])}
+                    onChange={(event) => {
+                      setBundle((previous) => ({
+                        ...previous,
+                        [entry.feature]: event.target.checked,
+                      }));
+                    }}
+                    className="mt-0.5 size-4 shrink-0 rounded border-charcoal/25 accent-forest"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-xs font-semibold text-charcoal">{entry.label}</span>
+                    <span className="mt-0.5 block text-[0.62rem] leading-4 text-charcoal/50">
+                      {entry.description}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-semibold text-charcoal">Additional flags</h3>
+              <p className="mt-0.5 text-[0.65rem] text-charcoal/50">
+                Raw keys beyond the catalog. Leave a value blank to store the
+                flag as enabled (true).
               </p>
             </div>
             <button
@@ -452,7 +524,12 @@ function PlanEditorModal({ plan, onClose, onSaved }: PlanEditorModalProps) {
             <X aria-hidden="true" className="size-3.5" />
             Cancel
           </button>
-          <button type="submit" disabled={isSubmitting || mutation.isPending} className={primaryButtonClasses}>
+          <button
+            type="button"
+            disabled={isSubmitting || mutation.isPending}
+            onClick={handleSubmit((values) => mutation.mutate(values))}
+            className={primaryButtonClasses}
+          >
             {isSubmitting || mutation.isPending ? (
               <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
             ) : null}

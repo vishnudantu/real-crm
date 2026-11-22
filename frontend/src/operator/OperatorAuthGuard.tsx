@@ -28,6 +28,7 @@ const ROLE_PERMISSIONS: Record<OperatorUser["role"], OperatorPermission[]> = {
     "deployments.write",
     "operators.manage",
     "audit.read",
+    "tenants.impersonate",
   ],
   SUPPORT: ["tenants.read", "audit.read"],
   SALES: ["tenants.read", "tenants.write", "audit.read"],

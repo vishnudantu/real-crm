@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Building2,
@@ -29,8 +29,19 @@ const STATUS_FILTERS: { value: TenantStatus | "all"; label: string }[] = [
 
 export function OperatorTenantsPage() {
   const { can } = useOperator();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusParam = searchParams.get("status");
+  const status: TenantStatus | "all" =
+    statusParam === "active" || statusParam === "suspended" ? statusParam : "all";
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<TenantStatus | "all">("all");
+
+  const setStatus = (value: TenantStatus | "all") => {
+    const next = new URLSearchParams(searchParams);
+    if (value === "all") next.delete("status");
+    else next.set("status", value);
+    setSearchParams(next, { replace: true });
+  };
+
   const tenantsQuery = useQuery({
     queryKey: ["operator", "tenants"],
     queryFn: fetchOperatorTenants,
@@ -56,14 +67,14 @@ export function OperatorTenantsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[0.65rem] font-semibold tracking-[0.2em] text-forest uppercase">
-            Platform overview
+            Organizations
           </p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-charcoal sm:text-3xl">
-            Tenants
+            Tenant directory
           </h1>
           <p className="mt-2 max-w-xl text-sm leading-6 text-charcoal/60">
-            Monitor workspace health, subscription plans, and platform activity
-            across every tenant.
+            Search every workspace, inspect its plan and region, and open
+            Tenant 360 for configuration, entitlements, and usage.
           </p>
         </div>
         {can("tenants.write") ? (
@@ -99,7 +110,7 @@ export function OperatorTenantsPage() {
         <SectionHeader
           eyebrow="Workspace directory"
           title={`${filtered.length} of ${tenants.length} tenants`}
-          description="Open a tenant to inspect usage, change status, or request a deployment."
+          description="Open a tenant for Tenant 360: health, branding, entitlements, usage, and deployments."
         />
 
         <div className="flex flex-col gap-3 border-b border-charcoal/10 px-5 py-4 sm:flex-row sm:items-center sm:px-6">
