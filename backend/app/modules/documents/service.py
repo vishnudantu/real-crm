@@ -8,6 +8,7 @@ from threading import Lock
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,7 @@ from app.modules.documents.exceptions import (
 )
 from app.modules.documents.models import (
     Document,
+    DocumentReviewState,
     DocumentStatus,
     DocumentTemplate,
     DocumentTemplateKey,
@@ -302,6 +304,7 @@ def _queue_document_event(session: Session, *, document: Document) -> None:
 def _issue_document(
     session: Session, *, actor, kind: DocumentTemplateKey, reference_type: str,
     reference_id: UUID, payload: dict,
+    review_state: str = DocumentReviewState.APPROVED.value,
 ) -> Document:
     seed_default_templates(session, tenant_id=actor.tenant_id, actor_id=actor.id)
     template = repository.active_template(session, tenant_id=actor.tenant_id, key=kind.value)
@@ -351,6 +354,7 @@ def _issue_document(
                 storage_path=relative_path,
                 content_sha256=digest,
                 payload_snapshot=snapshot,
+                review_state=review_state,
                 issued_by=actor.id,
                 issued_at=datetime.fromisoformat(snapshot["issued_at"]),
                 created_at=datetime.fromisoformat(snapshot["issued_at"]),
@@ -358,7 +362,10 @@ def _issue_document(
             )
             session.add(document)
             session.flush()  # materialize document.id for outbox entity linkage
-            _queue_document_event(session, document=document)
+            # The P0.3 approval gate holds the outbox event until release;
+            # pre-existing direct-issue documents keep their immediate event.
+            if review_state == DocumentReviewState.APPROVED.value:
+                _queue_document_event(session, document=document)
             session.commit()
             session.refresh(document)
             return document
@@ -401,6 +408,124 @@ def issue_demand_letter(session: Session, *, actor, installment_id: UUID) -> Doc
         session, actor=actor, kind=DocumentTemplateKey.DEMAND_LETTER,
         reference_type="installment", reference_id=installment.id, payload=payload,
     )
+
+
+DEMAND_LETTER_REQUEST_TYPE = "DEMAND_LETTER"
+
+
+def prepare_demand_letter(
+    session: Session, *, actor, installment_id: UUID
+) -> tuple[Document, object | None]:
+    """Generate the demand-letter PDF held in PENDING_REVIEW (P0.3 approval gate).
+
+    The artifact and its evidence snapshot are created exactly like a direct
+    issue, but no outbox event is queued and the installment's legacy sent
+    timestamp is untouched. A sibling DEMAND_LETTER ApprovalRequest in PENDING
+    is opened (or reused) so an admin can release the letter through the
+    existing decision endpoint. Returns ``(document, approval_request_or_None)``;
+    the request is ``None`` when the document already cleared the gate.
+    """
+
+    installment = postsales_repository.get_installment(
+        session, installment_id, tenant_id=actor.tenant_id
+    )
+    if installment is None:
+        raise InstallmentNotFoundError()
+    tenant = session.get(Tenant, actor.tenant_id)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tenant not found.")
+    payload = _demand_payload(session, actor=actor, installment=installment, tenant=tenant)
+    document = _issue_document(
+        session, actor=actor, kind=DocumentTemplateKey.DEMAND_LETTER,
+        reference_type="installment", reference_id=installment.id, payload=payload,
+        review_state=DocumentReviewState.PENDING_REVIEW.value,
+    )
+    approval = None
+    if document.review_state == DocumentReviewState.PENDING_REVIEW.value:
+        approval = ensure_demand_letter_approval(session, actor=actor, document=document)
+    return document, approval
+
+
+def ensure_demand_letter_approval(session: Session, *, actor, document: Document):
+    """Open (or reuse) the PENDING approval guarding a review-held letter.
+
+    A cancelled request never blocks a fresh one: only a live PENDING request
+    for this document is reused.
+    """
+
+    from app.modules.approvals import service as approvals_service
+    from app.modules.approvals.models import ApprovalRequest, ApprovalStatus
+
+    request = session.query(ApprovalRequest).filter_by(
+        tenant_id=actor.tenant_id,
+        request_type=DEMAND_LETTER_REQUEST_TYPE,
+        reference_type="document",
+        reference_id=document.id,
+        status=ApprovalStatus.PENDING.value,
+    ).order_by(ApprovalRequest.created_at.desc(), ApprovalRequest.id.desc()).first()
+    if request is not None:
+        return request
+    return approvals_service.request_approval(
+        session,
+        actor=actor,
+        request_type=DEMAND_LETTER_REQUEST_TYPE,
+        reference_type="document",
+        reference_id=document.id,
+        reason=(
+            f"Demand letter {document.document_number} requires admin "
+            "sign-off before it is released for send."
+        ),
+        amount_paise=document.payload_snapshot.get("amount_paise"),
+    )
+
+
+def release_demand_letter(session: Session, *, actor, document_id: UUID) -> Document:
+    """Admin-approve side effect: release the letter for send (P0.3).
+
+    Marks the document APPROVED_FOR_SEND, stamps the installment's legacy
+    ``demand_letter_sent_at`` and queues the ``document.demand_letter_issued``
+    outbox event (a QUEUED MessageDelivery row). The dispatcher owns provider
+    delivery; nothing is claimed as sent here. Idempotent for an already
+    released letter.
+    """
+
+    document = get_document(session, document_id, tenant_id=actor.tenant_id)
+    if document.kind != DocumentTemplateKey.DEMAND_LETTER.value:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Only demand-letter documents support release."
+        )
+    if document.status == DocumentStatus.VOIDED.value:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "A voided document cannot be released."
+        )
+    if document.review_state == DocumentReviewState.APPROVED_FOR_SEND.value:
+        return document
+    from app.modules.postsales import repository as postsales_repository
+    from app.modules.postsales.models import InstallmentStatus
+
+    installment = postsales_repository.get_installment(
+        session, document.reference_id, tenant_id=actor.tenant_id
+    )
+    if installment is None:
+        raise InstallmentNotFoundError()
+    released_at = datetime.now(UTC)
+    document.review_state = DocumentReviewState.APPROVED_FOR_SEND.value
+    document.approved_by = actor.id
+    document.approved_at = released_at
+    session.add(document)
+    # The legacy follow-up marker now records the approval-release event, which
+    # is the send authorization, not a claim of provider delivery.
+    installment.demand_letter_sent_at = released_at
+    if installment.status in (
+        InstallmentStatus.PENDING.value,
+        InstallmentStatus.DUE.value,
+    ):
+        installment.status = InstallmentStatus.DUE.value
+    session.add(installment)
+    _queue_document_event(session, document=document)
+    session.commit()
+    session.refresh(document)
+    return document
 
 
 def issue_receipt_pdf(session: Session, *, actor, receipt_id: UUID) -> Document:
@@ -453,8 +578,100 @@ def mark_void(
     document.voided_at = datetime.now(UTC)
     document.void_reason = reason
     document.updated_at = document.voided_at
+    if document.review_state != DocumentReviewState.APPROVED.value:
+        # A rejected or in-review document records the gate outcome too.
+        document.review_state = DocumentReviewState.VOIDED.value
+        document.updated_at = document.voided_at
     session.add(document)
     if commit:
         session.commit()
         session.refresh(document)
     return document
+
+
+def reject_demand_letter(
+    session: Session, *, actor, document_id: UUID, reason: str
+) -> Document:
+    """Admin-reject side effect: void the letter; no outbox event ever fires."""
+
+    document = get_document(session, document_id, tenant_id=actor.tenant_id)
+    if document.status == DocumentStatus.VOIDED.value:
+        return document
+    return mark_void(
+        session, actor=actor, document_id=document_id, reason=reason, commit=True
+    )
+
+
+def _document_deliveries(session: Session, document: Document) -> list:
+    from app.modules.messaging.models import MessageDelivery
+
+    return list(
+        session.scalars(
+            select(MessageDelivery)
+            .where(
+                MessageDelivery.tenant_id == document.tenant_id,
+                MessageDelivery.entity_id == document.id,
+            )
+            .order_by(MessageDelivery.created_at.desc(), MessageDelivery.id.desc())
+        ).all()
+    )
+
+
+def delivery_state_for_document(session: Session, document: Document) -> dict:
+    """Map the document's gate state plus its latest outbox outcome (P0.3).
+
+    ``delivery_state`` follows PENDING_REVIEW -> APPROVED_FOR_SEND -> QUEUED
+    -> SENT -> FAILED; ``delivery_status`` is the raw dispatcher outcome on the
+    newest linked MessageDelivery. No second sender exists — the rows are
+    exactly those ``emit_event`` wrote with ``entity_id`` = document id.
+    """
+
+    from app.modules.messaging.models import DeliveryStatus
+
+    document = get_document(session, document.id, tenant_id=document.tenant_id)
+    review_state = document.review_state
+    if document.status == DocumentStatus.VOIDED.value:
+        review_state = DocumentReviewState.VOIDED.value
+    deliveries = _document_deliveries(session, document)
+    latest = deliveries[0] if deliveries else None
+    if latest is None:
+        # No outbox row yet: the gate state is the whole story.
+        if review_state == DocumentReviewState.APPROVED_FOR_SEND.value:
+            delivery_state = DocumentReviewState.APPROVED_FOR_SEND.value
+        else:
+            delivery_state = review_state
+        delivery_status = None
+        provider_error = None
+        suppressed_reason = None
+        attempts = 0
+        sent_at = None
+    else:
+        delivery_status = latest.status
+        provider_error = latest.error
+        suppressed_reason = latest.suppressed_reason
+        attempts = latest.attempts
+        sent_at = latest.sent_at
+        if latest.status == DeliveryStatus.SENT.value:
+            delivery_state = DeliveryStatus.SENT.value
+        elif latest.status == DeliveryStatus.FAILED.value:
+            delivery_state = DeliveryStatus.FAILED.value
+        elif latest.status == DeliveryStatus.CANCELLED.value:
+            # Consent-suppressed at dispatch: terminally undeliverable.
+            delivery_state = DeliveryStatus.FAILED.value
+        elif review_state == DocumentReviewState.VOIDED.value:
+            delivery_state = DocumentReviewState.VOIDED.value
+        else:
+            # QUEUED or SENDING: outbox accepted, dispatch still pending.
+            delivery_state = DeliveryStatus.QUEUED.value
+    return {
+        "document_id": document.id,
+        "delivery_state": delivery_state,
+        "review_state": review_state,
+        "document_status": document.status,
+        "delivery_status": delivery_status,
+        "latest_delivery_id": latest.id if latest else None,
+        "latest_delivery_error": provider_error,
+        "suppressed_reason": suppressed_reason,
+        "attempts": attempts,
+        "sent_at": sent_at,
+    }

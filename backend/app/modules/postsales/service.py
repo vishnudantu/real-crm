@@ -512,33 +512,44 @@ def update_installment(
 
 
 def send_demand_letter(session: Session, *, actor, installment_id: UUID) -> Installment:
-    """Issue the versioned demand-letter artifact and retain legacy timestamp.
+    """Route the legacy demand-letter send through the P0.3 approval gate.
 
-    The returned object remains the ``Installment`` for existing callers; the
-    generated ``Document`` is also exposed as ``demand_letter_document`` for
-    callers that need its number/hash. Artifact generation is the issue event,
-    not a claim of provider delivery; the messaging outbox owns dispatch state.
+    BEHAVIOR CHANGE (P0.3): the letter is now *prepared* (document generated in
+    PENDING_REVIEW, sibling DEMAND_LETTER ApprovalRequest created) and the
+    installment's ``demand_letter_sent_at`` is stamped only when the approval
+    gate has been passed. For a fresh installment the send therefore completes
+    asynchronously, via POST /approvals/requests/{id}/decision by a second
+    admin (self-approval is forbidden). Documents that already cleared the
+    gate — the legacy direct-issue path or an earlier approval — are released
+    immediately so established issue-then-send sequences keep working.
+    The returned object remains the ``Installment``; the generated ``Document``
+    is exposed as ``demand_letter_document`` for callers that need its
+    number/hash. Artifact generation is the issue event, not a claim of
+    provider delivery; the messaging outbox owns dispatch state.
     """
 
     from app.modules.documents import service as document_service
+    from app.modules.documents.models import DocumentReviewState, DocumentStatus
 
-    document = document_service.issue_demand_letter(
+    document, request = document_service.prepare_demand_letter(
         session, actor=actor, installment_id=installment_id
     )
+    gate_cleared = request is None and document.status != DocumentStatus.VOIDED.value
+    if document.status == DocumentStatus.VOIDED.value:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Demand letter {document.document_number} was rejected "
+            f"({document.void_reason or 'no reason recorded'}); issue a new "
+            "template version to re-prepare it.",
+        )
+    if gate_cleared:
+        document_service.release_demand_letter(session, actor=actor, document_id=document.id)
+
     installment = repository.get_installment(
         session, installment_id, tenant_id=actor.tenant_id
     )
     if installment is None:
         raise InstallmentNotFoundError()
-    # Preserve the legacy follow-up marker while recording the real document.
-    installment.demand_letter_sent_at = document.issued_at or datetime.now(UTC)
-    if installment.status in (
-        InstallmentStatus.PENDING.value,
-        InstallmentStatus.DUE.value,
-    ):
-        installment.status = InstallmentStatus.DUE.value
-    session.add(installment)
-    session.commit()
     session.refresh(installment)
     # Transient legacy attribute: response serialization reads mapped columns only.
     installment.__dict__["demand_letter_document"] = document

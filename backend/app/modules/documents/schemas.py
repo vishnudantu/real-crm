@@ -21,12 +21,16 @@ class DocumentResponse(BaseModel):
     template_version: int
     document_number: str
     status: DocumentStatus
+    review_state: str | None = None
+    approved_by: UUID | None = None
+    approved_at: datetime | None = None
     content_sha256: str
     issued_by: UUID | None
     issued_at: datetime | None
     voided_at: datetime | None
     void_reason: str | None
     created_at: datetime
+    pending_approval_id: UUID | None = None
 
 
 class DocumentListResponse(BaseModel):
@@ -47,9 +51,25 @@ class DocumentProofResponse(BaseModel):
     document_number: str
     content_sha256: str
     status: DocumentStatus
+    review_state: str | None = None
     template_version: int
     issued_at: datetime | None
     issued_by: UUID | None
     voided_at: datetime | None
     void_reason: str | None
     payload_snapshot: dict
+
+
+class DocumentDeliveryResponse(BaseModel):
+    """P0.3 delivery tracking: approval gate state plus latest outbox outcome."""
+
+    document_id: UUID
+    delivery_state: str
+    review_state: str
+    document_status: DocumentStatus
+    delivery_status: str | None = None
+    latest_delivery_id: UUID | None = None
+    latest_delivery_error: str | None = None
+    suppressed_reason: str | None = None
+    attempts: int = 0
+    sent_at: datetime | None = None

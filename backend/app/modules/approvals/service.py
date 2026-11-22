@@ -22,6 +22,33 @@ from app.modules.users.models import RoleName, User
 
 DEFAULT_LIST_LIMIT = 50
 MAX_LIST_LIMIT = 200
+DEMAND_LETTER_REQUEST_TYPE = "DEMAND_LETTER"
+
+
+def _dispatch_demand_letter_decision(
+    session: Session, *, actor: User, request: ApprovalRequest, decision: str, note: str | None
+) -> None:
+    """Apply the P0.3 release/void side effect for an approved demand letter.
+
+    The approval row itself is the evidence; the referenced document carries
+    the gate state. A REJECT voids the letter with the decision note, and no
+    outbox event is queued. Failures here must not roll the recorded decision
+    back silently — the error propagates after the decision commit.
+    """
+
+    if request.reference_type != "document":
+        return
+    from app.modules.documents import service as document_service
+
+    if decision == ApprovalStatus.APPROVED.value:
+        document_service.release_demand_letter(session, actor=actor, document_id=request.reference_id)
+    else:
+        document_service.reject_demand_letter(
+            session,
+            actor=actor,
+            document_id=request.reference_id,
+            reason=note or "Demand letter rejected without a note.",
+        )
 
 
 def request_approval(
@@ -156,7 +183,12 @@ def decide(
     decision: str,
     note: str | None = None,
 ) -> ApprovalRequest:
-    """Record a manager's decision; the requester can never decide their own."""
+    """Record a manager's decision and run its request-type side effect.
+
+    The decision row is committed first; the demand-letter release/void then
+    joins the same session as its own committed domain transaction so the
+    approval evidence survives even if a side effect is retried.
+    """
 
     if decision not in (ApprovalStatus.APPROVED.value, ApprovalStatus.REJECTED.value):
         raise ValueError("decision must be APPROVED or REJECTED")
@@ -168,7 +200,7 @@ def decide(
     if request.requested_by_id == actor.id:
         raise SelfApprovalError()
     decided_at = datetime.now(UTC)
-    return _transition(
+    decided = _transition(
         session,
         request,
         values={
@@ -179,6 +211,11 @@ def decide(
             "approver_id": actor.id,
         },
     )
+    if request.request_type == DEMAND_LETTER_REQUEST_TYPE:
+        _dispatch_demand_letter_decision(
+            session, actor=actor, request=decided, decision=decision, note=note
+        )
+    return decided
 
 
 def cancel(session: Session, *, actor: User, request_id: UUID) -> ApprovalRequest:
