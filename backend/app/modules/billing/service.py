@@ -28,16 +28,41 @@ from app.modules.users.models import User
 
 
 class PlanLimitExceededError(HTTPException):
-    """Return HTTP 402 Payment Required for an exhausted plan limit."""
+    """Return HTTP 402 Payment Required for an exhausted plan limit.
 
-    def __init__(self, resource: str, limit: int) -> None:
-        super().__init__(
-            status.HTTP_402_PAYMENT_REQUIRED,
-            {
-                "code": "PLAN_LIMIT_EXCEEDED",
-                "message": f"Your plan's {resource} limit ({limit}) has been reached. Upgrade to continue.",
-            },
-        )
+    For monthly meters the detail carries the period window (UTC ISO-8601) plus
+    used/limit so the UI can render "3 of 1,000 leads this month". INR/IST
+    display conversion is a UI concern; the API always reports UTC.
+    """
+
+    def __init__(
+        self,
+        resource: str,
+        limit: int,
+        *,
+        used: int | None = None,
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
+        period_source: str | None = None,
+    ) -> None:
+        detail: dict = {
+            "code": "PLAN_LIMIT_EXCEEDED",
+            "message": f"Your plan's {resource} limit ({limit}) has been reached. Upgrade to continue.",
+        }
+        if used is not None:
+            detail["used"] = used
+            detail["limit"] = limit
+        if used is not None and period_start is not None and period_end is not None:
+            detail["period_start"] = period_start.isoformat()
+            detail["period_end"] = period_end.isoformat()
+            detail["period_source"] = period_source
+            detail["message"] = (
+                f"Your plan's {resource} limit has been reached: "
+                f"{used} of {limit} in the current period "
+                f"({period_start.date().isoformat()} to {period_end.date().isoformat()}). "
+                "Upgrade to continue."
+            )
+        super().__init__(status.HTTP_402_PAYMENT_REQUIRED, detail)
 
 
 def verify_razorpay_signature(raw_body: bytes, signature: str, settings: Settings) -> bool:
@@ -188,26 +213,142 @@ def current_plan(session: Session, *, tenant_id: UUID) -> Plan | None:
     return None
 
 
-def summary(session: Session, *, tenant_id: UUID) -> dict:
-    """Return plan, subscription, usage, and recent invoices for the tenant."""
-
-    plan = current_plan(session, tenant_id=tenant_id)
-    subscription = session.scalar(
+def _latest_subscription(session: Session, *, tenant_id: UUID) -> Subscription | None:
+    return session.scalar(
         select(Subscription)
         .where(Subscription.tenant_id == tenant_id)
         .order_by(Subscription.created_at.desc())
     )
-    usage = {
-        "users": session.scalar(select(func.count(User.id)).where(User.tenant_id == tenant_id)) or 0,
-        "leads": session.scalar(select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id)) or 0,
-        "whatsapp_sent": session.scalar(
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Normalize a stored period timestamp to timezone-aware UTC.
+
+    Postgres returns aware datetimes for TIMESTAMPTZ; SQLite (tests) returns
+    naive values that were written as UTC. Naive input is interpreted as UTC.
+    """
+
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _current_usage_window(
+    session: Session, *, tenant_id: UUID
+) -> tuple[datetime, datetime, str]:
+    """Resolve the metering window for monthly plan limits.
+
+    Returns (start_utc, end_utc, label). All datetimes are timezone-aware UTC;
+    INR/IST presentation is a UI concern only.
+
+    - SUBSCRIPTION: the latest subscription with both period bounds set uses
+      its current_period_start (inclusive) .. current_period_end (inclusive).
+    - ROLLING_30D: when there is no subscription, or it has no period bounds
+      (grace/trial/dev tenant with an attached plan), use a rolling 30-day
+      window ending now: [now - 30 days, now].
+    """
+
+    now = datetime.now(UTC)
+    subscription = _latest_subscription(session, tenant_id=tenant_id)
+    if (
+        subscription is not None
+        and subscription.current_period_start is not None
+        and subscription.current_period_end is not None
+    ):
+        return (
+            _as_utc(subscription.current_period_start),
+            _as_utc(subscription.current_period_end),
+            "SUBSCRIPTION",
+        )
+    return now - timedelta(days=30), now, "ROLLING_30D"
+
+
+def _count_period_leads(
+    session: Session, *, tenant_id: UUID, start: datetime, end: datetime
+) -> int:
+    """Count leads created inside the period window (start inclusive, end inclusive)."""
+
+    return (
+        session.scalar(
+            select(func.count(Lead.id)).where(
+                Lead.tenant_id == tenant_id,
+                Lead.created_at >= start,
+                Lead.created_at <= end,
+            )
+        )
+        or 0
+    )
+
+
+def _count_period_whatsapp_sent(
+    session: Session, *, tenant_id: UUID, start: datetime, end: datetime
+) -> int:
+    """Count SENT WhatsApp deliveries inside the period window.
+
+    The dispatcher stamps sent_at at send time, so sent_at is authoritative.
+    For legacy SENT rows where sent_at is NULL, fall back to created_at for the
+    window check (COALESCE(sent_at, created_at)).
+    """
+
+    occurred_at = func.coalesce(MessageDelivery.sent_at, MessageDelivery.created_at)
+    return (
+        session.scalar(
             select(func.count(MessageDelivery.id)).where(
                 MessageDelivery.tenant_id == tenant_id,
                 MessageDelivery.channel == "WHATSAPP",
                 MessageDelivery.status == "SENT",
+                occurred_at >= start,
+                occurred_at <= end,
             )
-        ) or 0,
+        )
+        or 0
+    )
+
+
+def _count_active_users(session: Session, *, tenant_id: UUID) -> int:
+    """Count active users for the seat limit; inactive accounts do not hold seats."""
+
+    return (
+        session.scalar(
+            select(func.count(User.id)).where(
+                User.tenant_id == tenant_id,
+                User.is_active.is_(True),
+            )
+        )
+        or 0
+    )
+
+
+def _usage_snapshot(
+    session: Session, *, tenant_id: UUID
+) -> tuple[dict, tuple[datetime, datetime, str]]:
+    """Compute period usage for all meters plus the window used."""
+
+    start, end, label = _current_usage_window(session, tenant_id=tenant_id)
+    usage = {
+        "users": _count_active_users(session, tenant_id=tenant_id),
+        "leads": _count_period_leads(session, tenant_id=tenant_id, start=start, end=end),
+        "whatsapp_sent": _count_period_whatsapp_sent(
+            session, tenant_id=tenant_id, start=start, end=end
+        ),
+        "period_start": start.isoformat(),
+        "period_end": end.isoformat(),
+        "period_source": label,
     }
+    return usage, (start, end, label)
+
+
+def summary(session: Session, *, tenant_id: UUID) -> dict:
+    """Return plan, subscription, period usage, and recent invoices for the tenant.
+
+    Monthly meters (leads, whatsapp_sent) reflect the current usage window, not
+    lifetime totals; users is an active-seat count. The usage payload includes
+    the period window (UTC ISO-8601) and its source for UI display.
+    """
+
+    plan = current_plan(session, tenant_id=tenant_id)
+    subscription = _latest_subscription(session, tenant_id=tenant_id)
+    usage, _window = _usage_snapshot(session, tenant_id=tenant_id)
     invoices = list(
         session.scalars(
             select(Invoice)
@@ -220,28 +361,37 @@ def summary(session: Session, *, tenant_id: UUID) -> dict:
 
 
 def ensure_within_plan_limits(session: Session, *, tenant_id: UUID, kind: str) -> None:
-    """Reject user/lead/WhatsApp creation when the tenant's plan limit is reached."""
+    """Reject user/lead/WhatsApp creation when the tenant's plan limit is reached.
+
+    users is a seat limit counted over active users. leads and whatsapp are
+    monthly meters counted inside the current usage window (subscription period
+    when available, else a rolling 30-day window).
+    """
 
     plan = current_plan(session, tenant_id=tenant_id)
     if plan is None:
         return  # No plan = ungated development tenant.
 
+    window: tuple[datetime, datetime, str] | None = None
     if kind == "users":
-        used = session.scalar(select(func.count(User.id)).where(User.tenant_id == tenant_id)) or 0
+        used = _count_active_users(session, tenant_id=tenant_id)
         limit = plan.max_users
     elif kind == "leads":
-        used = session.scalar(select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id)) or 0
+        start, end, label = _current_usage_window(session, tenant_id=tenant_id)
+        window = (start, end, label)
+        used = _count_period_leads(session, tenant_id=tenant_id, start=start, end=end)
         limit = plan.leads_per_month
     elif kind == "whatsapp":
-        used = session.scalar(
-            select(func.count(MessageDelivery.id)).where(
-                MessageDelivery.tenant_id == tenant_id,
-                MessageDelivery.channel == "WHATSAPP",
-                MessageDelivery.status == "SENT",
-            )
-        ) or 0
+        start, end, label = _current_usage_window(session, tenant_id=tenant_id)
+        window = (start, end, label)
+        used = _count_period_whatsapp_sent(session, tenant_id=tenant_id, start=start, end=end)
         limit = plan.whatsapp_msgs_per_month
     else:
         raise ValueError(f"Unsupported plan resource: {kind}")
     if used >= limit:
-        raise PlanLimitExceededError(kind, limit)
+        if window is not None:
+            start, end, label = window
+            raise PlanLimitExceededError(
+                kind, limit, used=used, period_start=start, period_end=end, period_source=label
+            )
+        raise PlanLimitExceededError(kind, limit, used=used)
