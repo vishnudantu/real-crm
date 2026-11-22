@@ -19,6 +19,7 @@ from app.modules.approvals import models as approvals_models  # noqa: F401
 from app.modules.auth import models as auth_models  # noqa: F401
 from app.modules.billing import models as billing_models  # noqa: F401
 from app.modules.bookings import models as bookings_models  # noqa: F401
+from app.modules.buyer_docs import models as buyer_docs_models  # noqa: F401
 from app.modules.brokers import models as brokers_models  # noqa: F401
 from app.modules.connectors import models as connectors_models  # noqa: F401
 from app.modules.connect_dialer import models as connect_dialer_models  # noqa: F401
