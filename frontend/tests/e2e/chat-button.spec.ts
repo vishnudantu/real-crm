@@ -1,5 +1,14 @@
 import { test, expect } from "@playwright/test";
 
+// These specs drive the real buyer portal against a live API + session, so
+// they only run when one is provided (E2E_LIVE=1 with a seeded dev backend).
+// The self-contained specs (responsive-portals, tenant-branding) mock the API
+// and always run headless in CI.
+test.skip(
+  !process.env.E2E_LIVE,
+  "Requires a live backend and buyer session; run with E2E_LIVE=1",
+);
+
 test("chat button starts a new conversation for the project", async ({
   page,
 }) => {
