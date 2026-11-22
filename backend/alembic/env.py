@@ -41,6 +41,7 @@ from app.modules.settings import models as settings_models  # noqa: F401
 from app.modules.tenancy import models as tenancy_models  # noqa: F401
 from app.modules.teamchat import models as teamchat_models  # noqa: F401
 from app.modules.users import models  # noqa: F401
+from app.modules.voice_intel import models as voice_intel_models  # noqa: F401
 
 config = context.config
 
