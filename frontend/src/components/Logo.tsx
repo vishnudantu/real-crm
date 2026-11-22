@@ -18,7 +18,7 @@ export function Logo({ tone = "dark", className = "", href = "#top" }: LogoProps
       {branding.logo_url && !logoFailed ? (
         <img
           src={branding.logo_url}
-          alt=""
+          alt={branding.brand_name}
           onError={() => setLogoFailed(true)}
           className="size-9 shrink-0 rounded-[10px] object-contain"
         />

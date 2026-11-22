@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ArrowUpRight, Building2, CalendarCheck, MessageSquareText, ShieldCheck } from "lucide-react";
 import { useTenant } from "../tenant/TenantProvider";
+import { isTenantBranded } from "../tenant/branding";
 
 const benefits = [
   { icon: MessageSquareText, title: "A considered reply", text: "Respond with the approved facts for each project." },
@@ -10,6 +11,7 @@ const benefits = [
 
 export function PublicLanding() {
   const { branding } = useTenant();
+  const tenantBranded = isTenantBranded(branding);
 
   return (
     <div className="min-h-svh bg-ivory text-charcoal">
@@ -18,7 +20,7 @@ export function PublicLanding() {
       </a>
       <header className="shell flex min-h-20 items-center justify-between gap-4">
         <Link to="/" className="inline-flex items-center gap-2.5 text-xl font-extrabold tracking-tight">
-          {branding.logo_url ? <img src={branding.logo_url} alt="" className="size-9 object-contain" /> : <Building2 aria-hidden="true" className="size-7 text-forest" />}
+          {branding.logo_url ? <img src={branding.logo_url} alt={branding.brand_name} className="size-9 object-contain" /> : <Building2 aria-hidden="true" className="size-7 text-forest" />}
           {branding.brand_name}
         </Link>
         <Link to="/login" className="rounded-full border border-charcoal/20 px-5 py-2.5 text-sm font-semibold hover:bg-charcoal hover:text-ivory">
@@ -53,6 +55,9 @@ export function PublicLanding() {
       </main>
       <footer className="shell border-t border-charcoal/10 py-6 text-xs text-charcoal/60">
         <p>&copy; {new Date().getFullYear()} {branding.brand_name}. Residential enquiry management.</p>
+        {tenantBranded && (
+          <p className="mt-2 text-charcoal/45">Powered by PropFlow</p>
+        )}
       </footer>
     </div>
   );

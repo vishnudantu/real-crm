@@ -29,9 +29,36 @@
   .price { color: var(--brand); font-weight: 600; white-space: nowrap; }
   footer { text-align: center; padding: 32px; color: var(--muted); font-size: 12px; }
   @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } .hero h1 { font-size: 32px; } }
+  .preview-switch {
+    position: fixed; top: 12px; left: 12px; z-index: 50;
+    max-width: 280px; background: #ffffff; border: 1px solid #e7e5e4;
+    border-radius: 10px; padding: 10px 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    font-size: 12px; color: #44403c;
+  }
+  .preview-switch__title { margin: 0 0 4px; font-weight: 600; font-size: 12px; color: #1c1917; }
+  .preview-switch__hint { margin: 0 0 8px; font-size: 11px; color: #78716c; line-height: 1.4; }
+  .preview-switch__actions { margin: 0; display: flex; gap: 6px; flex-wrap: wrap; }
+  .preview-switch__btn {
+    display: inline-block; padding: 5px 10px; border-radius: 6px;
+    background: var(--brand); color: #fff; text-decoration: none;
+    font-size: 11px; font-weight: 600; border: 1px solid var(--brand);
+  }
+  .preview-switch__btn--quiet { background: #fff; color: var(--brand); }
 </style>
 </head>
 <body>
+  <aside class="preview-switch" aria-label="Tenant preview">
+    <p class="preview-switch__title">Tenant preview</p>
+    <p class="preview-switch__hint">
+      Switch which tenant brand this page renders as. Choice is kept for the
+      current tab only (session storage).
+    </p>
+    <p class="preview-switch__actions">
+      <a href="?tenant=omni-demo" class="preview-switch__btn">Skyline (demo tenant)</a>
+      <a href="?tenant=default" class="preview-switch__btn preview-switch__btn--quiet">Platform default</a>
+    </p>
+  </aside>
+
   <div class="topbar">
     <strong>SKYLINE DEVELOPERS</strong>
     <span class="badge">Demo — third-party website simulation</span>
