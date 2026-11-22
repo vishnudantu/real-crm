@@ -870,16 +870,71 @@ def test_status_transitions_and_consent(
 def test_concurrent_duplicate_creation(
     client: TestClient,
     override_db: None,
-    active_project: dict[str, object],
 ) -> None:
+    """Two simultaneous public lead posts with one phone: exactly one 201, one 409.
+
+    The isolated suite's StaticPool hands both threads the SAME sqlite3
+    connection, and concurrent cursor use on one connection is undefined
+    (intermittent InterfaceError: "bad parameter or other API misuse"). This
+    test therefore runs against its own file-backed engine so each thread gets
+    a real separate connection — matching production semantics — while
+    create_lead's in-process dedupe lock decides the winner.
+    """
+
+    import os
+    import tempfile
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db.base import Base
+    from app.db.session import get_db
+    from app.main import app
+    from app.modules.projects.models import Project
+    from app.modules.tenancy.models import Tenant
+    from app.modules.users.models import Role
+
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    engine = create_engine(f"sqlite+pysqlite:///{path}", connect_args={"timeout": 30})
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
     shared_phone = "+91 91000 99999"
+    with session_factory() as seed:
+        role = Role(name=RoleName.ADMIN.value)
+        tenant = Tenant(slug=f"dup-{uuid4().hex[:8]}", name="Dup Co")
+        seed.add_all([role, tenant])
+        seed.flush()
+        author = User(
+            tenant_id=tenant.id, full_name="Author", email=f"a-{uuid4().hex[:8]}@x.example",
+            password_hash="not-a-real-hash", role_id=role.id, is_active=True,
+        )
+        seed.add(author)
+        seed.flush()
+        project = Project(
+            tenant_id=tenant.id, name="Dup Project", slug=f"dup-p-{uuid4().hex[:8]}",
+            location="Hyderabad", status=ProjectStatus.ACTIVE.value, created_by=author.id,
+        )
+        seed.add(project)
+        seed.commit()
+        project_id = str(project.id)
+
+    def _get_db():
+        session = session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = _get_db
 
     def _create(idx: int) -> int:
         response = client.post(
             "/api/v1/leads",
             json={
                 "full_name": f"Buyer {idx}",
-                "project_id": active_project["id"],
+                "project_id": project_id,
                 "phone": shared_phone,
                 "email": f"buyer{idx}@example.com",
                 "source": "WEBSITE",
@@ -888,10 +943,16 @@ def test_concurrent_duplicate_creation(
         )
         return response.status_code
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        f1 = executor.submit(_create, 1)
-        f2 = executor.submit(_create, 2)
-        results = sorted([f1.result(), f2.result()])
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            f1 = executor.submit(_create, 1)
+            f2 = executor.submit(_create, 2)
+            results = sorted([f1.result(), f2.result()])
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+        os.unlink(path)
 
     # One request succeeds (201), the other is rejected as duplicate (409)
     assert results == [201, 409]
