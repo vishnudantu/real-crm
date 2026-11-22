@@ -94,6 +94,20 @@ the checked-out code. Confirmed / refuted / new items are labeled as such.
   signed URLs (per blueprint 18.1).
 - CI: add frontend unit + Playwright E2E + dependency/secret scanning (blueprint P1.5).
 
+## 6. Testing conventions discovered (save future debugging)
+
+- The isolated suite shares **one** in-memory SQLite connection via StaticPool.
+  Any worker-thread code that does `session.get(...)` *before* the service's
+  process lock can interleave with another session's begin/commit on that same
+  connection and receive `None` from the identity map (observed as a
+  concurrency-test flake in PF-002). Convention: concurrent-post tests pass a
+  detached actor (`SimpleNamespace(id, tenant_id)`); reads inside the locked
+  critical section are safe because the lock serializes that path. Real
+  PostgreSQL CI uses independent pooled connections + the advisory lock.
+- Python-side `uuid4` column defaults populate at **flush**, not construction:
+  any fixture that references a new row's `id` must `flush()` first
+  (`projects.created_by` hit this three times during this work).
+
 ## 7. Next single task
 
 **PF-002 (this slice):** make installment receipt posting concurrency-safe, uniquely

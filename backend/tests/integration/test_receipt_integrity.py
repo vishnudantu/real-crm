@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -44,6 +45,19 @@ from app.modules.projects.models import Project, ProjectStatus
 from app.modules.tenancy.models import Tenant
 from app.modules.users.models import Role, RoleName, User
 from tests.support import TEST_PASSWORD
+
+
+def _principal(user_id: UUID, tenant_id: UUID) -> SimpleNamespace:
+    """Detached actor carrying only what record_receipt reads.
+
+    Worker threads must not touch the shared in-memory SQLite connection for
+    identity lookups (StaticPool hands every session the same DBAPI
+    connection; only the service's locked write path is safe there). On real
+    PostgreSQL CI, record_receipt's advisory lock provides the same guarantee
+    across independent pooled connections.
+    """
+
+    return SimpleNamespace(id=user_id, tenant_id=tenant_id)
 
 
 def _fixture(session: Session, *, slug: str | None = None) -> tuple[Tenant, User, Project, Lead]:
@@ -104,14 +118,14 @@ class TestConcurrentPosting:
         with test_session_factory() as session:
             _tenant, admin, _project, lead = _fixture(session)
             installment = _booked_plan(session, admin, lead, 10_00_00_00)
-            installment_id, actor_id = installment.id, admin.id
+            principal = _principal(admin.id, admin.tenant_id)
+            installment_id = installment.id
 
         def post(_: int) -> str:
             with test_session_factory() as worker:
-                actor = worker.get(User, actor_id)
                 try:
                     service.record_receipt(
-                        worker, actor=actor,
+                        worker, actor=principal,
                         payload=ReceiptCreateRequest(
                             installment_id=installment_id, amount_paise=10_00_00_00,
                             channel=ReceiptChannel.UPI,
@@ -156,13 +170,12 @@ class TestConcurrentPosting:
                 session.add(extra)
                 session.commit()
                 ids.append(_booked_plan(session, admin, extra, 5_00_00_00).id)
-            actor_id = admin.id
+            principal = _principal(admin.id, admin.tenant_id)
 
         def post(index: int) -> str:
             with test_session_factory() as worker:
-                actor = worker.get(User, actor_id)
                 receipt = service.record_receipt(
-                    worker, actor=actor,
+                    worker, actor=principal,
                     payload=ReceiptCreateRequest(
                         installment_id=ids[index], amount_paise=5_00_00_00,
                         channel=ReceiptChannel.CHEQUE,
