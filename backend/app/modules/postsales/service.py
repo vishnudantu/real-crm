@@ -315,14 +315,26 @@ def record_receipt(
 
 
 def send_demand_letter(session: Session, *, actor, installment_id: UUID) -> Installment:
-    """Mark a demand letter as sent and record the timestamp for follow-up."""
+    """Issue the versioned demand-letter artifact and retain legacy timestamp.
 
+    The returned object remains the ``Installment`` for existing callers; the
+    generated ``Document`` is also exposed as ``demand_letter_document`` for
+    callers that need its number/hash. Artifact generation is the issue event,
+    not a claim of provider delivery; the messaging outbox owns dispatch state.
+    """
+
+    from app.modules.documents import service as document_service
+
+    document = document_service.issue_demand_letter(
+        session, actor=actor, installment_id=installment_id
+    )
     installment = repository.get_installment(
         session, installment_id, tenant_id=actor.tenant_id
     )
     if installment is None:
         raise InstallmentNotFoundError()
-    installment.demand_letter_sent_at = datetime.now(UTC)
+    # Preserve the legacy follow-up marker while recording the real document.
+    installment.demand_letter_sent_at = document.issued_at or datetime.now(UTC)
     if installment.status in (
         InstallmentStatus.PENDING.value,
         InstallmentStatus.DUE.value,
@@ -331,6 +343,8 @@ def send_demand_letter(session: Session, *, actor, installment_id: UUID) -> Inst
     session.add(installment)
     session.commit()
     session.refresh(installment)
+    # Transient legacy attribute: response serialization reads mapped columns only.
+    installment.__dict__["demand_letter_document"] = document
     return installment
 
 

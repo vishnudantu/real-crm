@@ -11,6 +11,7 @@ from app.modules.connectors.router import router as connectors_router
 from app.modules.conversations.router import router as conversations_router
 from app.modules.customers.router import opportunities_router, router as customers_router
 from app.modules.dashboard.router import router as dashboard_router
+from app.modules.documents.router import router as documents_router
 from app.modules.follow_ups.router import router as follow_ups_router
 from app.modules.handoffs.router import handoffs_router
 from app.modules.integrations.connections_router import router as integration_connections_router
@@ -57,6 +58,7 @@ api_router.include_router(integrations_router)
 api_router.include_router(inventory_router)
 api_router.include_router(billing_router)
 api_router.include_router(postsales_router)
+api_router.include_router(documents_router)
 api_router.include_router(omnichannel_router)
 api_router.include_router(channel_webhook_router)
 api_router.include_router(widget_router)

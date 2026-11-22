@@ -51,6 +51,20 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
     ],
   },
   {
+    label: "Customers",
+    items: [
+      { label: "Customer Directory", shortLabel: "Directory", to: "/admin/customers" },
+      { label: "Opportunity Pipeline", shortLabel: "Opportunities", to: "/admin/opportunities" },
+    ],
+  },
+  {
+    label: "Property",
+    items: [
+      { label: "Inventory Map", shortLabel: "Map", to: "/admin/inventory", exact: true },
+      { label: "Units & Import", shortLabel: "Units", to: "/admin/inventory/units" },
+    ],
+  },
+  {
     label: "Team",
     items: [{ label: "User Management", shortLabel: "Users", to: "/admin/users" }],
   },
