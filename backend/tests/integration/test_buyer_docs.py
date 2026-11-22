@@ -450,7 +450,7 @@ def test_migration_upgrade_and_downgrade_on_isolated_sqlite() -> None:
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     assert migration.revision == "e7f8a9b0c1d2"
-    assert migration.down_revision == "f7a8b9c0d1e2"
+    assert migration.down_revision == "c3d4e5f6a7b9"
 
     engine = create_engine("sqlite+pysqlite:///:memory:")
     try:
