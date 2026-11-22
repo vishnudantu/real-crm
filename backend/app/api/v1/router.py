@@ -7,6 +7,7 @@ from app.modules.ai_assistant.router import router as ai_assistant_router
 from app.modules.auth.router import router as auth_router
 from app.modules.billing.router import router as billing_router
 from app.modules.bookings.router import bookings_router, slots_router
+from app.modules.brokers.router import router as brokers_router
 from app.modules.connectors.router import router as connectors_router
 from app.modules.conversations.router import router as conversations_router
 from app.modules.customers.router import opportunities_router, router as customers_router
@@ -47,6 +48,7 @@ api_router.include_router(messages_router)
 api_router.include_router(ai_assistant_router)
 api_router.include_router(slots_router)
 api_router.include_router(bookings_router)
+api_router.include_router(brokers_router)
 api_router.include_router(follow_ups_router)
 api_router.include_router(handoffs_router)
 api_router.include_router(notifications_router)
