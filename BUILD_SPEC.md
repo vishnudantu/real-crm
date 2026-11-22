@@ -1,5 +1,11 @@
 \# BUILD\_SPEC.md — PROPFLOW → White-label Multi-tenant SaaS
 
+> **[PARTIALLY SUPERSEDED — 2026-11-22.]** The phase plan in this document has been
+> executed and extended well beyond its scope (post-sales UI, feature flags, omnichannel,
+> customer/inventory graph work in flight). Do not use it to decide current work.
+> Current source of truth: `CURRENT_STATE_AUDIT.md` → `docs/FEATURE_SPEC_2046.md` →
+> the checked-out code. Kept for historical phase context only.
+
 
 
 \## 0. Working agreement (read first — applies to every phase)

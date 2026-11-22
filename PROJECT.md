@@ -1,5 +1,12 @@
 # PropFlow --- Project Definition
 
+> **[SUPERSEDED — historical document, kept for provenance.]** This file describes the
+> original PS3 assignment scope (single-developer assistant, no CRM/WhatsApp/post-sales).
+> The product has since become a multi-tenant real-estate SaaS platform. For current truth:
+> read `CURRENT_STATE_AUDIT.md`, then `docs/FEATURE_SPEC_2046.md` (destination spec) and
+> `docs/PROPFLOW_MASTER_BLUEPRINT_FOR_CLAUDE_CODE.md` (remediation + architecture spec).
+> The checked-out source remains the final authority on what exists today.
+
 **Project type:** AI-powered real-estate lead-response and site-visit
 booking assistant\
 **Selected problem statement:** PS3 --- Real estate developer's AI
