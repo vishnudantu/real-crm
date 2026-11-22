@@ -28,6 +28,7 @@ from app.modules.postsales.router import router as postsales_router
 from app.modules.operator.router import router as operator_router
 from app.modules.projects.router import router as projects_router
 from app.modules.settings.router import settings_router
+from app.modules.service_desk.router import router as service_desk_router
 from app.modules.tenancy.router import router as tenancy_router
 from app.modules.teamchat.router import router as teamchat_router
 from app.modules.users.router import router as users_router
@@ -61,6 +62,7 @@ api_router.include_router(billing_router)
 api_router.include_router(postsales_router)
 api_router.include_router(documents_router)
 api_router.include_router(teamchat_router)
+api_router.include_router(service_desk_router)
 api_router.include_router(omnichannel_router)
 api_router.include_router(channel_webhook_router)
 api_router.include_router(widget_router)
