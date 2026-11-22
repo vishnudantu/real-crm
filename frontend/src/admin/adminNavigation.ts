@@ -66,7 +66,10 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
   },
   {
     label: "Team",
-    items: [{ label: "User Management", shortLabel: "Users", to: "/admin/users" }],
+    items: [
+      { label: "Team Chat", shortLabel: "Team Chat", to: "/admin/teamchat" },
+      { label: "User Management", shortLabel: "Users", to: "/admin/users" },
+    ],
   },
   {
     label: "Revenue",
