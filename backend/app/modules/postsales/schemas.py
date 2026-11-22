@@ -119,6 +119,12 @@ class InstallmentWithPaid(BaseModel):
     outstanding_paise: int
 
 
+class ReceiptVoidRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: str = Field(min_length=3, max_length=500)
+
+
 class ReceiptCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -151,6 +157,9 @@ class ReceiptResponse(BaseModel):
     received_by_id: UUID | None
     paid_at: datetime
     notes: str | None
+    voided_at: datetime | None = None
+    voided_by_id: UUID | None = None
+    void_reason: str | None = None
 
 
 class BrokerCommissionCreateRequest(BaseModel):

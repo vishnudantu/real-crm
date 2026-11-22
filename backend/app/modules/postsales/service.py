@@ -18,7 +18,9 @@ from app.modules.postsales.exceptions import (
     InstallmentNotFoundError,
     PaymentPlanAmountMismatchError,
     PaymentPlanNotFoundError,
+    ReceiptAlreadyVoidedError,
     ReceiptAmountExceedsOutstandingError,
+    ReceiptNotFoundError,
     SaleBookingExistsError,
     SaleBookingNotFoundError,
 )
@@ -34,8 +36,10 @@ from app.modules.postsales.models import (
 )
 from app.modules.postsales.schemas import (
     BrokerCommissionCreateRequest,
+    InstallmentUpdateRequest,
     PaymentPlanCreateRequest,
     ReceiptCreateRequest,
+    ReceiptVoidRequest,
     SaleBookingCreateRequest,
     SaleBookingUpdateRequest,
 )
@@ -44,6 +48,97 @@ from app.modules.postsales.schemas import (
 # in-process lock serializes receipt posting there. PostgreSQL uses the
 # transaction-scoped pg_advisory_xact_lock instead.
 _receipt_post_lock = Lock()
+
+
+def _status_for_balance(
+    installment: Installment, *, paid_paise: int, today: date | None = None
+) -> str:
+    """Derive the financial state; PART_PAID takes precedence over due dates."""
+
+    if paid_paise >= installment.amount_paise:
+        return InstallmentStatus.PAID.value
+    if paid_paise > 0:
+        return InstallmentStatus.PART_PAID.value
+    due_on = installment.due_on
+    today = today or date.today()
+    if due_on < today:
+        return InstallmentStatus.OVERDUE.value
+    if due_on == today:
+        return InstallmentStatus.DUE.value
+    return InstallmentStatus.PENDING.value
+
+
+def _sync_booking_closure(
+    session: Session, *, installment: Installment, tenant_id: UUID
+) -> SaleBooking:
+    """Reconcile closure after any installment/payment mutation in this transaction."""
+
+    plan = session.get(PaymentPlan, installment.plan_id)
+    booking = (
+        repository.get_booking(session, plan.sale_booking_id, tenant_id=tenant_id)
+        if plan is not None
+        else None
+    )
+    if booking is None:
+        raise SaleBookingNotFoundError()
+    # record_receipt historically uses autoflush=False; flush explicitly before
+    # deciding whether all installments are settled. The plan ids are queried
+    # directly because the eagerly-loaded ``booking.plans`` collection can be
+    # stale (expire_on_commit=False) when a plan was created in this session.
+    session.flush()
+    plan_ids = list(
+        session.scalars(
+            select(PaymentPlan.id).where(
+                PaymentPlan.sale_booking_id == booking.id,
+                PaymentPlan.tenant_id == tenant_id,
+            )
+        ).all()
+    )
+    open_rows = (
+        session.scalars(
+            select(Installment).where(
+                Installment.plan_id.in_(plan_ids),
+                Installment.status.in_(repository.OPEN_INSTALLMENT_STATUSES),
+            )
+        ).all()
+        if plan_ids
+        else []
+    )
+    if not open_rows:
+        booking.status = SaleStatus.CLOSED.value
+    elif booking.status == SaleStatus.CLOSED.value:
+        # A void that reopens the ledger re-arms the payment workflow. CANCELLED
+        # bookings never take this branch: reopen is defined for CLOSED only.
+        booking.status = SaleStatus.PAYMENTS_IN_PROGRESS.value
+    session.add(booking)
+    return booking
+
+
+def _locked_operation(session: Session, operation):
+    """Share the receipt allocation lock with all money/status corrections."""
+
+    if session.get_bind().dialect.name == "sqlite":
+        with _receipt_post_lock:
+            return operation()
+    return operation()
+
+
+def _void_linked_documents(session: Session, *, actor, receipt: Receipt, reason: str) -> None:
+    from app.modules.documents import service as document_service
+    from app.modules.documents.models import Document
+
+    # reference_type narrows this to receipt evidence, not the installment's demands.
+    documents = session.scalars(
+        select(Document).where(
+            Document.tenant_id == actor.tenant_id,
+            Document.reference_type == "receipt",
+            Document.reference_id == receipt.id,
+        )
+    ).all()
+    for document in documents:
+        document_service.mark_void(
+            session, actor=actor, document_id=document.id, reason=reason, commit=False
+        )
 
 
 def create_booking(
@@ -271,23 +366,10 @@ def record_receipt(
         )
         session.add(installment)
 
-        # Close the sale booking when every open installment is settled.
-        plan = installment.plan
-        booking = repository.get_booking(
-            session, plan.sale_booking_id, tenant_id=actor.tenant_id
+        # Close or retain the booking from the flushed live installment states.
+        _sync_booking_closure(
+            session, installment=installment, tenant_id=actor.tenant_id
         )
-        all_plans = booking.plans
-        open_rows = session.scalars(
-            select(Installment).where(
-                Installment.plan_id.in_([p.id for p in all_plans]),
-                Installment.status.notin_(
-                    (InstallmentStatus.PAID.value, InstallmentStatus.WAIVED.value)
-                ),
-            )
-        ).all()
-        if not open_rows:
-            booking.status = SaleStatus.CLOSED.value
-            session.add(booking)
         session.commit()
         session.refresh(receipt)
         return receipt
@@ -312,6 +394,114 @@ def record_receipt(
             status.HTTP_409_CONFLICT,
             "This payment posting conflicted with a concurrent one. Retry the request.",
         ) from None
+
+
+def void_receipt(
+    session: Session, *, actor, receipt_id: UUID, payload: ReceiptVoidRequest
+) -> Receipt:
+    """Reverse a posting's financial effect without deleting or editing money.
+
+    Refund netting is future work: a void is not a cash refund and no refund
+    module exists yet. Idempotency keys remain globally unique, so a replacement
+    posting must use a new key even after this reversal.
+    """
+
+    from app.modules.messaging.engine import emit_event
+
+    def _void() -> Receipt:
+        repository.lock_receipt_allocation(session, tenant_id=actor.tenant_id)
+        receipt = repository.get_receipt(session, receipt_id, tenant_id=actor.tenant_id)
+        if receipt is None:
+            raise ReceiptNotFoundError()
+        if receipt.voided_at is not None:
+            raise ReceiptAlreadyVoidedError(receipt.void_reason or "")
+        installment = repository.get_installment(
+            session, receipt.installment_id, tenant_id=actor.tenant_id
+        )
+        if installment is None:
+            raise InstallmentNotFoundError()
+        receipt.voided_at = datetime.now(UTC)
+        receipt.voided_by_id = actor.id
+        receipt.void_reason = payload.reason
+        session.add(receipt)
+        session.flush()
+        installment.status = _status_for_balance(
+            installment,
+            paid_paise=repository.receipt_total_for_installment(
+                session, installment.id, tenant_id=actor.tenant_id
+            ),
+        )
+        session.add(installment)
+        _sync_booking_closure(session, installment=installment, tenant_id=actor.tenant_id)
+        _void_linked_documents(session, actor=actor, receipt=receipt, reason=payload.reason)
+        emit_event(
+            session,
+            tenant_id=actor.tenant_id,
+            event="receipt.voided",
+            context={
+                "entity_type": "receipt",
+                "entity_id": receipt.id,
+                "reason": payload.reason,
+            },
+        )
+        session.commit()
+        session.refresh(receipt)
+        return receipt
+
+    return _locked_operation(session, _void)
+
+
+def update_installment(
+    session: Session, *, actor, installment_id: UUID, payload: InstallmentUpdateRequest
+) -> Installment:
+    """Edit an open installment without allowing direct settlement or waiver."""
+
+    def _update() -> Installment:
+        repository.lock_receipt_allocation(session, tenant_id=actor.tenant_id)
+        installment = repository.get_installment(
+            session, installment_id, tenant_id=actor.tenant_id
+        )
+        if installment is None:
+            raise InstallmentNotFoundError()
+        fields = payload.model_fields_set
+        if payload.status in (InstallmentStatus.PAID, InstallmentStatus.WAIVED):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "PAID requires a receipt posting; WAIVED requires a separate waiver workflow.",
+            )
+        if installment.status == InstallmentStatus.WAIVED.value:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "A waived installment is corrected by the waiver workflow, not this route.",
+            )
+        paid = repository.receipt_total_for_installment(
+            session, installment.id, tenant_id=actor.tenant_id
+        )
+        new_amount = payload.amount_paise if "amount_paise" in fields else installment.amount_paise
+        if new_amount is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Installment amount cannot be null.")
+        if new_amount < paid:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Installment amount cannot be below the live paid total of {paid} paise.",
+            )
+        if "due_on" in fields:
+            if payload.due_on is None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Due date cannot be null.")
+            installment.due_on = payload.due_on
+        installment.amount_paise = new_amount
+        financial_edit = bool({"amount_paise", "due_on"} & fields)
+        if financial_edit or paid > 0:
+            installment.status = _status_for_balance(installment, paid_paise=paid)
+        elif "status" in fields and payload.status is not None:
+            installment.status = payload.status.value
+        session.add(installment)
+        _sync_booking_closure(session, installment=installment, tenant_id=actor.tenant_id)
+        session.commit()
+        session.refresh(installment)
+        return installment
+
+    return _locked_operation(session, _update)
 
 
 def send_demand_letter(session: Session, *, actor, installment_id: UUID) -> Installment:
@@ -387,10 +577,32 @@ def ledger(session: Session, *, actor, booking_id: UUID) -> dict:
     booking = repository.get_booking(session, booking_id, tenant_id=actor.tenant_id)
     if booking is None:
         raise SaleBookingNotFoundError()
-    plan_ids = [p.id for p in booking.plans]
+    # Explicit queries: with expire_on_commit=False the identity-mapped
+    # booking.plans collection can be stale after a plan is added mid-session.
+    plans = list(
+        session.scalars(
+            select(PaymentPlan)
+            .where(PaymentPlan.sale_booking_id == booking.id, PaymentPlan.tenant_id == actor.tenant_id)
+            .order_by(PaymentPlan.created_at)
+        ).all()
+    )
+    plan_ids = [p.id for p in plans]
     paid_map = repository.paid_map_for_plan(session, plan_ids, tenant_id=actor.tenant_id)
 
-    installments = [i for p in booking.plans for i in p.installments]
+    installments = (
+        list(
+            session.scalars(
+                select(Installment)
+                .where(
+                    Installment.plan_id.in_(plan_ids),
+                    Installment.tenant_id == actor.tenant_id,
+                )
+                .order_by(Installment.plan_id, Installment.sequence_no)
+            ).all()
+        )
+        if plan_ids
+        else []
+    )
     receipts = list(
         session.scalars(
             select(Receipt).where(
@@ -403,11 +615,11 @@ def ledger(session: Session, *, actor, booking_id: UUID) -> dict:
         session, tenant_id=actor.tenant_id, sale_booking_id=booking.id
     )
 
-    collected = sum(r.amount_paise for r in receipts)
+    collected = sum(r.amount_paise for r in receipts if r.voided_at is None)
     planned = sum(i.amount_paise for i in installments)
     return {
         "booking": booking,
-        "plans": booking.plans,
+        "plans": plans,
         "installments": [
             {
                 "id": i.id,

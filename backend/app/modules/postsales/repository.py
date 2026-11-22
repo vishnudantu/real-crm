@@ -27,6 +27,16 @@ OPEN_INSTALLMENT_STATUSES = (
 )
 
 
+def live_receipt_conditions():
+    """Predicates that keep voided rows out of every live money total.
+
+    Voided receipts remain physically present for audit; only their
+    contribution to balances disappears.
+    """
+
+    return (Receipt.voided_at.is_(None),)
+
+
 def get_booking(
     session: Session, booking_id: UUID, *, tenant_id: UUID
 ) -> SaleBooking | None:
@@ -116,6 +126,7 @@ def receipt_total_for_installment(
             select(func.coalesce(func.sum(Receipt.amount_paise), 0)).where(
                 Receipt.installment_id == installment_id,
                 Receipt.tenant_id == tenant_id,
+                *live_receipt_conditions(),
             )
         )
         or 0
@@ -160,6 +171,14 @@ def lock_receipt_allocation(session: Session, *, tenant_id: UUID) -> None:
     )
 
 
+def get_receipt(
+    session: Session, receipt_id: UUID, *, tenant_id: UUID
+) -> Receipt | None:
+    return session.scalar(
+        select(Receipt).where(Receipt.id == receipt_id, Receipt.tenant_id == tenant_id)
+    )
+
+
 def get_receipt_by_idempotency_key(
     session: Session, *, tenant_id: UUID, idempotency_key: str
 ) -> Receipt | None:
@@ -183,6 +202,7 @@ def paid_map_for_plan(
             Installment.plan_id.in_(plan_ids),
             Receipt.tenant_id == tenant_id,
             Installment.tenant_id == tenant_id,
+            *live_receipt_conditions(),
         )
         .group_by(Receipt.installment_id)
     ).all()

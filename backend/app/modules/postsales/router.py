@@ -9,17 +9,20 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import AdminUser, CurrentUser
-from app.modules.postsales import service
+from app.modules.auth.dependencies import AdminUser, CurrentUser, require_roles
+from app.modules.users.models import RoleName, User
+from app.modules.postsales import repository, service
 from app.modules.postsales.schemas import (
     BrokerCommissionCreateRequest,
     BrokerCommissionResponse,
     BrokerCommissionUpdateRequest,
     InstallmentUpdateRequest,
+    InstallmentWithPaid,
     PaymentPlanCreateRequest,
     PaymentPlanResponse,
     ReceiptCreateRequest,
     ReceiptResponse,
+    ReceiptVoidRequest,
     SaleBookingCreateRequest,
     SaleBookingListResponse,
     SaleBookingResponse,
@@ -115,6 +118,60 @@ def record_receipt_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.record_receipt(db, actor=admin, payload=payload)
+
+
+@router.get("/receipts/{receipt_id}", response_model=ReceiptResponse)
+def get_receipt_endpoint(
+    receipt_id: UUID,
+    sales_user: Annotated[User, Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    from app.modules.postsales.exceptions import ReceiptNotFoundError
+
+    receipt = repository.get_receipt(db, receipt_id, tenant_id=sales_user.tenant_id)
+    if receipt is None:
+        raise ReceiptNotFoundError()
+    return receipt
+
+
+@router.post("/receipts/{receipt_id}/void", response_model=ReceiptResponse)
+def void_receipt_endpoint(
+    receipt_id: UUID,
+    payload: ReceiptVoidRequest,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Reverse a receipt's financial effect; the original row stays for audit."""
+
+    return service.void_receipt(db, actor=admin, receipt_id=receipt_id, payload=payload)
+
+
+@router.patch("/installments/{installment_id}", response_model=InstallmentWithPaid)
+def update_installment_endpoint(
+    installment_id: UUID,
+    payload: InstallmentUpdateRequest,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+):
+    installment = service.update_installment(
+        db, actor=admin, installment_id=installment_id, payload=payload
+    )
+    paid = repository.receipt_total_for_installment(
+        db, installment.id, tenant_id=admin.tenant_id
+    )
+    result = InstallmentWithPaid(
+        id=installment.id,
+        plan_id=installment.plan_id,
+        sequence_no=installment.sequence_no,
+        milestone=installment.milestone,
+        amount_paise=installment.amount_paise,
+        due_on=installment.due_on,
+        status=installment.status,
+        demand_letter_sent_at=installment.demand_letter_sent_at,
+        paid_paise=paid,
+        outstanding_paise=max(0, installment.amount_paise - paid),
+    )
+    return result
 
 
 @router.post(

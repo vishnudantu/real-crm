@@ -441,7 +441,11 @@ def get_document_for_download(session: Session, document_id: UUID, *, tenant_id:
     return document, path
 
 
-def mark_void(session: Session, *, actor, document_id: UUID, reason: str) -> Document:
+def mark_void(
+    session: Session, *, actor, document_id: UUID, reason: str, commit: bool = True
+) -> Document:
+    """Void evidence; ``commit=False`` joins the caller's domain transaction."""
+
     document = get_document(session, document_id, tenant_id=actor.tenant_id)
     if document.status == DocumentStatus.VOIDED.value:
         return document
@@ -450,6 +454,7 @@ def mark_void(session: Session, *, actor, document_id: UUID, reason: str) -> Doc
     document.void_reason = reason
     document.updated_at = document.voided_at
     session.add(document)
-    session.commit()
-    session.refresh(document)
+    if commit:
+        session.commit()
+        session.refresh(document)
     return document
