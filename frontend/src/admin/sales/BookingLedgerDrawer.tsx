@@ -44,6 +44,10 @@ import {
 import { CreatePlanModal } from "./CreatePlanModal";
 import { CreateCommissionModal } from "./CreateCommissionModal";
 import { RecordReceiptModal } from "./RecordReceiptModal";
+import {
+  IssueDemandLetterCell,
+  ReceiptDocumentCell,
+} from "./DocumentsActionsCell";
 
 interface BookingLedgerDrawerProps {
   booking: SaleBookingItem;
@@ -399,6 +403,11 @@ export function BookingLedgerDrawer({
                                   )}
                                   <span>Demand</span>
                                 </button>
+                                <IssueDemandLetterCell
+                                  installmentId={row.id}
+                                  outstandingPaise={row.outstanding_paise}
+                                  onIssued={onChanged}
+                                />
                               </div>
                             </td>
                           </tr>
@@ -440,9 +449,15 @@ export function BookingLedgerDrawer({
                             </p>
                           )}
                         </div>
-                        <p className="text-sm font-semibold text-emerald-700">
-                          {formatInr(receipt.amount_paise)}
-                        </p>
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          <p className="text-sm font-semibold text-emerald-700">
+                            {formatInr(receipt.amount_paise)}
+                          </p>
+                          <ReceiptDocumentCell
+                            receiptId={receipt.id}
+                            onIssued={onChanged}
+                          />
+                        </div>
                       </li>
                     ))}
                   </ul>
