@@ -23,13 +23,14 @@ test("keeps core navigation in stable labeled groups when all optional features 
 
   assert.deepEqual(
     groups.map((group) => group.label),
-    ["Overview", "Engage", "Catalog", "Customers", "Team", "System"],
+    ["Overview", "Engage", "Catalog", "Customers", "Property", "Team", "System"],
   );
   assert.deepEqual(pathsByGroup({}), [
     ["/admin"],
     ["/admin/notifications"],
     ["/admin/projects", "/admin/visits"],
     ["/admin/customers", "/admin/opportunities"],
+    ["/admin/inventory", "/admin/inventory/units"],
     ["/admin/users"],
     ["/admin/settings", "/admin/audit-logs", "/admin/account"],
   ]);
@@ -82,9 +83,10 @@ test("returns fresh groups and preserves ordering with every feature enabled", (
   assert.notEqual(first[0].items, second[0].items);
   assert.deepEqual(
     first.map((group) => group.label),
-    ["Overview", "Engage", "Catalog", "Customers", "Team", "Revenue", "Integrate", "System"],
+    ["Overview", "Engage", "Catalog", "Customers", "Property", "Team", "Revenue", "Integrate", "System"],
   );
-  assert.deepEqual(first[5].items.map((item) => item.to), [
+  const revenue = first.find((group) => group.label === "Revenue");
+  assert.deepEqual(revenue?.items.map((item) => item.to), [
     "/admin/analytics",
     "/admin/sales-bookings",
   ]);
