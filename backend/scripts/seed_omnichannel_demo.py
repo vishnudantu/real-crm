@@ -12,11 +12,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 os.environ.setdefault("ENVIRONMENT", "development")
 
-from sqlalchemy import create_engine, select  # noqa: E402
+from sqlalchemy import create_engine, func, select  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from app.core.config import get_settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
+import app.main  # noqa: E402,F401  (import all routers so every model registers on Base)
 from app.modules.auth.security import hash_password  # noqa: E402
 from app.modules.leads.models import Lead, LeadSource, LeadStatus  # noqa: E402
 from app.modules.omnichannel.models import (  # noqa: E402
@@ -206,12 +207,138 @@ def main() -> int:
 
         db.commit()
 
+        # 6. Canonical inventory: a small realistic unit grid for the project
+        from app.modules.inventory.models import (
+            HoldState,
+            PropertyUnit,
+            UnitEventSource,
+            UnitStatus,
+            UnitStatusEvent,
+            utcnow,
+        )
+        from app.modules.inventory.schemas import UnitCreateRequest
+        from app.modules.inventory.service import (
+            acquire_hold,
+            create_unit,
+            release_hold,
+            transition_unit,
+        )
+
+        existing_units = db.scalar(
+            select(func.count()).select_from(PropertyUnit).where(
+                PropertyUnit.project_id == project.id
+            )
+        )
+        if not existing_units:
+            specs = [
+                ("A-101", "2 BHK", 1, "North", 1150, UnitStatus.AVAILABLE),
+                ("A-102", "2 BHK", 1, "East", 1180, UnitStatus.AVAILABLE),
+                ("A-201", "3 BHK", 2, "North", 1450, UnitStatus.AVAILABLE),
+                ("A-202", "3 BHK", 2, "Corner", 1510, UnitStatus.AVAILABLE),
+                ("A-301", "3 BHK", 3, "North", 1450, UnitStatus.SOLD),
+                ("A-1201", "3 BHK Premium", 12, "Panorama", 1620, UnitStatus.AVAILABLE),
+                ("A-1202", "3 BHK Premium", 12, "Panorama", 1620, UnitStatus.BLOCKED),
+                ("P-05", "Villa", None, "South", 2400, UnitStatus.AVAILABLE),
+            ]
+            for code, config_, floor, facing, area, status_ in specs:
+                unit = create_unit(
+                    db, actor=admin, commit=False,
+                    payload=UnitCreateRequest(
+                        project_id=project.id, internal_code=code, configuration=config_,
+                        floor=str(floor) if floor else None, tower="A" if not code.startswith("P") else None,
+                        plot_number=code if code.startswith("P") else None,
+                        facing=facing, carpet_area_sqft=area,
+                        status=UnitStatus.AVAILABLE,
+                    ),
+                )
+                # SOLD/BLOCKED follow the governed lifecycle: AVAILABLE → ON_HOLD
+                # → BOOKED → SOLD. A hold is created and released along the way.
+                if status_ == UnitStatus.SOLD:
+                    db.flush()
+                    sold_hold = acquire_hold(
+                        db, actor=admin, unit_id=unit.id, reason="Demo historical booking", hours=1,
+                    )
+                    transition_unit(
+                        db, actor=admin, unit_id=unit.id, to_status=UnitStatus.BOOKED,
+                        reason="Demo historical booking", source=UnitEventSource.BOOKING,
+                    )
+                    release_hold(
+                        db, actor=admin, hold_id=sold_hold.id, reason="Demo sale completed"
+                    )
+                    transition_unit(
+                        db, actor=admin, unit_id=unit.id, to_status=UnitStatus.SOLD,
+                        reason="Demo historical sale", source=UnitEventSource.MANUAL,
+                    )
+                elif status_ == UnitStatus.BLOCKED:
+                    db.flush()
+                    transition_unit(
+                        db, actor=admin, unit_id=unit.id, to_status=UnitStatus.BLOCKED,
+                        reason="Society maintenance", source=UnitEventSource.MANUAL,
+                        approved=True,
+                    )
+            db.commit()
+
+        # A live hold so the inventory board shows ON_HOLD immediately
+        from app.modules.inventory.models import UnitHold
+
+        target_unit = db.scalar(
+            select(PropertyUnit).where(
+                PropertyUnit.project_id == project.id,
+                PropertyUnit.internal_code == "A-1201",
+            )
+        )
+        if target_unit is not None:
+            active = db.scalar(
+                select(UnitHold).where(
+                    UnitHold.unit_id == target_unit.id,
+                    UnitHold.state == HoldState.ACTIVE.value,
+                )
+            )
+            if active is None and target_unit.status == UnitStatus.AVAILABLE.value:
+                acquire_hold(
+                    db, actor=admin, unit_id=target_unit.id, lead_id=lead.id,
+                    reason="Demo hold for Aarav's enquiry", hours=48,
+                )
+
+        # 7. Customer graph: canonical contact + opportunity for the demo lead
+        from app.modules.customers.models import Opportunity
+        from app.modules.customers.service import open_opportunity, resolve_contact
+
+        contact, _method, _created = resolve_contact(
+            db, tenant_id=tenant.id, phone=lead.phone, email=lead.email,
+            display_name=lead.full_name,
+            provenance={"source": "demo_seed", "captured_at": utcnow().isoformat()},
+        )
+        if contact is not None:
+            existing_opp = db.scalar(
+                select(Opportunity.id).where(
+                    Opportunity.contact_id == contact.id,
+                    Opportunity.project_id == project.id,
+                    Opportunity.lead_id == lead.id,
+                )
+            )
+            if existing_opp is None:
+                open_opportunity(
+                    db, actor=admin, contact_id=contact.id, project_id=project.id,
+                    from_lead_id=lead.id, owner_user_id=admin.id,
+                    budget_min=90_00_00_00, budget_max=110_00_00_00,
+                    preferred_configuration="3 BHK", source="WHATSAPP",
+                )
+
+        unit_count = db.scalar(
+            select(func.count()).select_from(PropertyUnit).where(
+                PropertyUnit.project_id == project.id
+            )
+        )
+
     print("\nDEMO READY")
     print("  Tenant slug:      omni-demo")
     print("  Brand:            Skyline Developers")
     print(f"  Admin login:      admin@skyline-demo.example / {DEMO_ADMIN_PASSWORD}")
     print(f"  Sales login:      sales@skyline-demo.example / {DEMO_SALES_PASSWORD}")
     print(f"  Widget embed URL: http://127.0.0.1:8010/api/v1/widget/omni-demo/embed.js")
+    print(f"  Inventory units:  {unit_count} (varied statuses incl. one active hold)")
+    print("  Customer graph:   canonical contact + opportunity linked to the WhatsApp lead")
     return 0
 
 
