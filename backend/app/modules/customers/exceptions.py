@@ -46,6 +46,20 @@ class OpportunityConflictError(HTTPException):
         super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
+class ContactUpdateError(HTTPException):
+    """A contact PATCH payload is empty or touches non-editable fields."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
+
+class ContactConflictError(HTTPException):
+    """Concurrent create collided; the identity is owned by another row."""
+
+    def __init__(self, detail: str = "Contact already exists.") -> None:
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
 class CustomerAccessDeniedError(HTTPException):
     def __init__(self) -> None:
         super().__init__(

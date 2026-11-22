@@ -5,19 +5,24 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.customers import service
 from app.modules.customers.schemas import (
+    ContactCreateRequest,
+    ContactCreateResponse,
     ContactDetailResponse,
     ContactListResponse,
+    ContactMethodResponse,
     ContactResolvePreviewResponse,
     ContactResponse,
+    ContactUpdateRequest,
     Customer360Response,
     DuplicateSuggestionsResponse,
+    MergeListResponse,
     MergeRequest,
     MergeResponse,
     OpportunityCreateRequest,
@@ -83,6 +88,88 @@ def list_contacts_endpoint(
     return service.list_contacts(
         db, actor=current_user, page=page, page_size=page_size, search=search
     )
+
+
+@router.post(
+    "/contacts",
+    response_model=ContactCreateResponse,
+    summary="Create a contact from the console (idempotent by identity)",
+)
+def create_contact_endpoint(
+    payload: ContactCreateRequest,
+    current_user: ManagerUser,
+    response: Response,
+    db: Annotated[Session, Depends(get_db)],
+) -> ContactCreateResponse:
+    """Create-or-resolve a contact.
+
+    Status code is set manually because it depends on resolution:
+    **201** when a new contact was created (``created=true``), **200** when
+    the normalized email/phone already resolved to an existing contact
+    (``created=false``) — a repeat submission is idempotent, never a 409.
+    Response: ``{contact, method, created}``.
+    """
+    contact, method, created = service.create_contact(
+        db,
+        actor=current_user,
+        display_name=payload.display_name,
+        email=str(payload.email) if payload.email else None,
+        phone=payload.phone,
+        primary_language=payload.primary_language,
+        notes=payload.notes,
+    )
+    response.status_code = (
+        status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    )
+    return ContactCreateResponse(
+        contact=ContactDetailResponse.model_validate(contact),
+        method=ContactMethodResponse.model_validate(method) if method else None,
+        created=created,
+    )
+
+
+@router.patch(
+    "/contacts/{contact_id}",
+    response_model=ContactResponse,
+    summary="Update editable contact profile fields",
+)
+def update_contact_endpoint(
+    contact_id: UUID,
+    payload: ContactUpdateRequest,
+    current_user: ManagerUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> ContactResponse:
+    """Editable: display_name / primary_language / notes only.
+
+    status and merged_into_id change only through the merge endpoints and are
+    rejected here (400 or 422 via extra="forbid"). An empty PATCH body is a
+    400. Tenant visibility is enforced by ``_get_visible_contact``.
+    """
+    fields = payload.model_dump(exclude_unset=True)
+    contact = service.update_contact(
+        db, actor=current_user, contact_id=contact_id, fields=fields
+    )
+    return ContactResponse.model_validate(contact)
+
+
+@router.get(
+    "/merges",
+    response_model=MergeListResponse,
+    summary="List merge history (newest first, tenant scoped)",
+)
+def list_merges_endpoint(
+    current_user: ManagerUser,
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> MergeListResponse:
+    """Historical merges for the revert UI.
+
+    Response: ``{items: [MergeResponse...], total, limit, offset}`` with each
+    item carrying ``{id, survivor_id, merged_id, actor_user_id, reason,
+    evidence, reverted_at, created_at}``.
+    """
+    return service.list_merges(db, actor=current_user, limit=limit, offset=offset)
 
 
 @router.get(
