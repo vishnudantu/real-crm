@@ -1,116 +1,83 @@
-"""Business logic and authorization for internal staff chat."""
+"""Team chat domain services with explicit tenant and membership predicates."""
 
 from __future__ import annotations
 
 import base64
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, aliased, joinedload
 
-from app.modules.teamchat import repository
-from app.modules.teamchat.exceptions import (
-    ChatChannelNameConflictError,
-    ChatChannelNotFoundError,
-    ChatChannelPrivateError,
-    ChatMembershipRequiredError,
-    ChatMessageEditForbiddenError,
-    ChatMessageNotFoundError,
-)
 from app.modules.teamchat.models import (
-    ChatChannel,
-    ChatChannelMember,
-    ChatChannelRole,
-    ChatMessage,
+    TeamChannel,
+    TeamChannelKind,
+    TeamChannelMember,
+    TeamChannelRole,
+    TeamMessage,
     utcnow,
 )
 from app.modules.teamchat.schemas import (
-    ChatChannelCreateRequest,
-    ChatChannelListResponse,
-    ChatChannelMemberResponse,
-    ChatChannelResponse,
-    ChatMessageCreateRequest,
-    ChatMessageListResponse,
-    ChatMessageResponse,
-    ChatMessageUpdateRequest,
-    ChatStaffUserResponse,
+    TeamChannelCreateRequest,
+    TeamChannelMemberResponse,
+    TeamChannelResponse,
+    TeamMessageCreateRequest,
+    TeamMessageEditRequest,
+    TeamMessageResponse,
+    TeamStaffUserResponse,
 )
 from app.modules.users.models import Role, RoleName, User
 
 STAFF_ROLES = (RoleName.ADMIN.value, RoleName.SALES_EXECUTIVE.value)
+DEFAULT_PAGE_SIZE = 50
 
 
-def _staff_response(user: User | None) -> ChatStaffUserResponse | None:
+def _staff_response(user: User | None) -> TeamStaffUserResponse | None:
     if user is None:
         return None
-    return ChatStaffUserResponse(
-        id=user.id,
-        full_name=user.full_name,
-        email=user.email,
-        role=user.role.name,
+    return TeamStaffUserResponse(
+        id=user.id, full_name=user.full_name, email=user.email, role=user.role.name
     )
 
 
-def _member_response(member: ChatChannelMember) -> ChatChannelMemberResponse:
-    return ChatChannelMemberResponse(
-        id=member.id,
-        channel_id=member.channel_id,
-        user_id=member.user_id,
-        role=member.role,
-        joined_at=member.joined_at,
-        user=_staff_response(member.user),
-    )
-
-
-def _message_response(message: ChatMessage) -> ChatMessageResponse:
-    return ChatMessageResponse(
-        id=message.id,
-        channel_id=message.channel_id,
-        sender_user_id=message.sender_user_id,
-        sender=_staff_response(message.sender),
-        body=message.body,
-        created_at=message.created_at,
-        updated_at=message.updated_at,
-        edited_at=message.edited_at,
-    )
-
-
-def _channel(session: Session, *, actor: User, channel_id: UUID) -> ChatChannel:
-    channel = repository.get_channel_by_id(
-        session, channel_id, tenant_id=actor.tenant_id
+def _channel(session: Session, *, tenant_id: UUID, channel_id: UUID) -> TeamChannel:
+    channel = session.scalar(
+        select(TeamChannel).where(
+            TeamChannel.id == channel_id, TeamChannel.tenant_id == tenant_id
+        )
     )
     if channel is None:
-        raise ChatChannelNotFoundError()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Team channel not found.")
     return channel
 
 
 def _membership(
-    session: Session, *, actor: User, channel_id: UUID
-) -> ChatChannelMember | None:
-    return repository.get_membership(
-        session,
-        tenant_id=actor.tenant_id,
-        channel_id=channel_id,
-        user_id=actor.id,
+    session: Session, *, tenant_id: UUID, channel_id: UUID, user_id: UUID
+) -> TeamChannelMember | None:
+    return session.scalar(
+        select(TeamChannelMember).where(
+            TeamChannelMember.tenant_id == tenant_id,
+            TeamChannelMember.channel_id == channel_id,
+            TeamChannelMember.user_id == user_id,
+        )
     )
 
 
 def _require_membership(
-    session: Session, *, actor: User, channel_id: UUID
-) -> ChatChannelMember:
-    membership = _membership(session, actor=actor, channel_id=channel_id)
+    session: Session, *, tenant_id: UUID, channel_id: UUID, user_id: UUID
+) -> TeamChannelMember:
+    membership = _membership(
+        session, tenant_id=tenant_id, channel_id=channel_id, user_id=user_id
+    )
     if membership is None:
-        raise ChatMembershipRequiredError()
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Join this channel before continuing.")
     return membership
 
 
-def _tenant_staff(
-    session: Session, *, tenant_id: UUID, user_ids: list[UUID]
-) -> list[User]:
+def _tenant_staff(session: Session, *, tenant_id: UUID, user_ids: list[UUID]) -> list[User]:
     unique_ids = set(user_ids)
     if not unique_ids:
         return []
@@ -129,175 +96,266 @@ def _tenant_staff(
     if len(users) != len(unique_ids):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "Every member must be an active staff user in your organization.",
+            "Every member and mention must be an active staff user in your organization.",
         )
     return users
 
 
+def _unread_counts(
+    session: Session, *, tenant_id: UUID, user_id: UUID
+) -> dict[UUID, int]:
+    membership = aliased(TeamChannelMember)
+    rows = session.execute(
+        select(membership.channel_id, func.count(TeamMessage.id))
+        .join(
+            TeamMessage,
+            and_(
+                TeamMessage.tenant_id == membership.tenant_id,
+                TeamMessage.channel_id == membership.channel_id,
+                TeamMessage.author_user_id != user_id,
+                or_(
+                    membership.last_read_at.is_(None),
+                    TeamMessage.created_at > membership.last_read_at,
+                ),
+            ),
+        )
+        .where(membership.tenant_id == tenant_id, membership.user_id == user_id)
+        .group_by(membership.channel_id)
+    ).all()
+    return {channel_id: int(count) for channel_id, count in rows}
+
+
 def _channel_response(
-    channel: ChatChannel,
-    *,
-    member_count: int,
-    members: list[ChatChannelMemberResponse] | None = None,
-) -> ChatChannelResponse:
-    return ChatChannelResponse(
+    channel: TeamChannel, *, unread: int, member_count: int = 0,
+    members: list[TeamChannelMemberResponse] | None = None,
+) -> TeamChannelResponse:
+    return TeamChannelResponse(
         id=channel.id,
         name=channel.name,
-        description=channel.description,
+        topic=channel.topic,
+        kind=channel.kind,
+        is_general=channel.is_general,
         is_private=channel.is_private,
         created_by=channel.created_by,
         created_at=channel.created_at,
-        updated_at=channel.updated_at,
+        unread_count=unread,
         member_count=member_count,
         members=members or [],
     )
 
 
-def _channel_with_members(session: Session, *, channel: ChatChannel) -> ChatChannelResponse:
-    members = repository.list_members(
-        session, tenant_id=channel.tenant_id, channel_id=channel.id
-    )
+def _channel_with_members(
+    session: Session, *, channel: TeamChannel, unread: int
+) -> TeamChannelResponse:
+    rows = session.execute(
+        select(TeamChannelMember, User)
+        .join(User, User.id == TeamChannelMember.user_id)
+        .where(
+            TeamChannelMember.tenant_id == channel.tenant_id,
+            TeamChannelMember.channel_id == channel.id,
+            User.tenant_id == channel.tenant_id,
+        )
+        .order_by(TeamChannelMember.joined_at, TeamChannelMember.id)
+    ).all()
     return _channel_response(
-        channel,
-        member_count=len(members),
-        members=[_member_response(member) for member in members],
+        channel, unread=unread, member_count=len(rows),
+        members=[
+            TeamChannelMemberResponse(
+                user_id=member.user_id,
+                role=member.role,
+                joined_at=member.joined_at,
+                last_read_at=member.last_read_at,
+                user=_staff_response(user),
+            )
+            for member, user in rows
+        ],
     )
+
+
+def _member_count_map(session: Session, *, tenant_id: UUID) -> dict[UUID, int]:
+    rows = session.execute(
+        select(TeamChannelMember.channel_id, func.count(TeamChannelMember.id))
+        .where(TeamChannelMember.tenant_id == tenant_id)
+        .group_by(TeamChannelMember.channel_id)
+    ).all()
+    return {channel_id: int(count) for channel_id, count in rows}
 
 
 def create_channel(
-    session: Session, *, actor: User, payload: ChatChannelCreateRequest
-) -> ChatChannelResponse:
-    """Create a channel, automatically joining its creator as an admin."""
-
+    session: Session, *, actor: User, payload: TeamChannelCreateRequest
+) -> TeamChannelResponse:
     _tenant_staff(session, tenant_id=actor.tenant_id, user_ids=payload.member_ids)
-    if repository.get_channel_by_name(
-        session, tenant_id=actor.tenant_id, name=payload.name
-    ) is not None:
-        raise ChatChannelNameConflictError()
-
-    now = utcnow()
-    channel = ChatChannel(
-        tenant_id=actor.tenant_id,
-        name=payload.name,
-        description=payload.description,
+    existing = session.scalar(
+        select(TeamChannel).where(
+            TeamChannel.tenant_id == actor.tenant_id, TeamChannel.name == payload.name
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A channel with this name already exists.")
+    channel = TeamChannel(
+        tenant_id=actor.tenant_id, name=payload.name,
+        # /team-chat alias callers may send description; canonical uses topic.
+        topic=payload.topic or payload.description,
         is_private=payload.is_private,
-        created_by=actor.id,
-        created_at=now,
-        updated_at=now,
+        kind=TeamChannelKind.CHANNEL.value, created_by=actor.id,
     )
     session.add(channel)
     try:
         session.flush()
-        for user_id in {actor.id, *payload.member_ids}:
-            session.add(
-                ChatChannelMember(
-                    tenant_id=actor.tenant_id,
-                    channel_id=channel.id,
-                    user_id=user_id,
-                    role=(
-                        ChatChannelRole.ADMIN.value
-                        if user_id == actor.id
-                        else ChatChannelRole.MEMBER.value
-                    ),
-                    joined_at=now,
-                )
-            )
+        member_ids = {actor.id, *payload.member_ids}
+        for user_id in member_ids:
+            session.add(TeamChannelMember(
+                tenant_id=actor.tenant_id, channel_id=channel.id, user_id=user_id,
+                role=(TeamChannelRole.OWNER.value if user_id == actor.id
+                      else TeamChannelRole.MEMBER.value),
+            ))
         session.commit()
     except IntegrityError as exc:
         session.rollback()
-        raise ChatChannelNameConflictError() from exc
-    session.refresh(channel)
-    return _channel_with_members(session, channel=channel)
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "A channel with this name already exists."
+        ) from exc
+    return _channel_with_members(session, channel=channel, unread=0)
 
 
-def join_channel(
-    session: Session, *, actor: User, channel_id: UUID
-) -> ChatChannelResponse:
-    """Join a public channel; private channels require an invitation."""
-
-    channel = _channel(session, actor=actor, channel_id=channel_id)
-    membership = _membership(session, actor=actor, channel_id=channel.id)
-    if membership is not None:
-        return _channel_with_members(session, channel=channel)
-    if channel.is_private:
-        raise ChatChannelPrivateError()
-    session.add(
-        ChatChannelMember(
-            tenant_id=actor.tenant_id,
-            channel_id=channel.id,
-            user_id=actor.id,
-            role=ChatChannelRole.MEMBER.value,
+def ensure_general_channel(session: Session, *, actor: User) -> TeamChannelResponse:
+    channel = session.scalar(
+        select(TeamChannel).where(
+            TeamChannel.tenant_id == actor.tenant_id, TeamChannel.is_general.is_(True)
         )
     )
+    if channel is not None:
+        if _membership(
+            session, tenant_id=actor.tenant_id, channel_id=channel.id, user_id=actor.id
+        ) is None:
+            return join_channel(session, actor=actor, channel_id=channel.id)
+        unread = _unread_counts(session, tenant_id=actor.tenant_id, user_id=actor.id)
+        return _channel_with_members(
+            session, channel=channel, unread=unread.get(channel.id, 0)
+        )
+    if actor.role.name != RoleName.ADMIN.value:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "An administrator must create the general channel first."
+        )
+    channel = TeamChannel(
+        tenant_id=actor.tenant_id, name="general", topic="Company-wide staff updates",
+        kind=TeamChannelKind.CHANNEL.value, is_general=True, created_by=actor.id,
+    )
+    session.add(channel)
+    session.flush()
+    staff_users = list(session.scalars(
+        select(User).where(User.tenant_id == actor.tenant_id, User.is_active.is_(True))
+    ).all())
+    for user in staff_users:
+        if user.role.name not in STAFF_ROLES:
+            continue
+        session.add(TeamChannelMember(
+            tenant_id=actor.tenant_id, channel_id=channel.id, user_id=user.id,
+            role=(TeamChannelRole.OWNER.value if user.id == actor.id else TeamChannelRole.MEMBER.value),
+        ))
     session.commit()
-    return _channel_with_members(session, channel=channel)
+    return _channel_with_members(session, channel=channel, unread=0)
+
+
+def create_direct(session: Session, *, actor: User, user_id: UUID) -> TeamChannelResponse:
+    recipient = _tenant_staff(session, tenant_id=actor.tenant_id, user_ids=[user_id])[0]
+    if recipient.id == actor.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose another staff member for a direct chat.")
+    own_memberships = select(TeamChannelMember.channel_id).where(
+        TeamChannelMember.tenant_id == actor.tenant_id,
+        TeamChannelMember.user_id == actor.id,
+    )
+    pair_memberships = select(TeamChannelMember.channel_id).where(
+        TeamChannelMember.tenant_id == actor.tenant_id,
+        TeamChannelMember.channel_id.in_(own_memberships),
+        TeamChannelMember.user_id == recipient.id,
+    )
+    channels = list(session.scalars(
+        select(TeamChannel).where(
+            TeamChannel.tenant_id == actor.tenant_id,
+            TeamChannel.kind == TeamChannelKind.DIRECT.value,
+            TeamChannel.id.in_(pair_memberships),
+        ).order_by(TeamChannel.created_at)
+    ).all())
+    for channel in channels:
+        if _membership(
+            session, tenant_id=actor.tenant_id, channel_id=channel.id, user_id=actor.id
+        ) is not None:
+            join_channel(session, actor=actor, channel_id=channel.id)
+            unread = _unread_counts(session, tenant_id=actor.tenant_id, user_id=actor.id)
+            return _channel_with_members(
+                session, channel=channel, unread=unread.get(channel.id, 0)
+            )
+    channel = TeamChannel(
+        tenant_id=actor.tenant_id, name=f"dm-{actor.id}-{recipient.id}",
+        kind=TeamChannelKind.DIRECT.value, created_by=actor.id,
+    )
+    session.add(channel)
+    session.flush()
+    for member_id in (actor.id, recipient.id):
+        session.add(TeamChannelMember(
+            tenant_id=actor.tenant_id, channel_id=channel.id, user_id=member_id,
+            role=TeamChannelRole.MEMBER.value,
+        ))
+    session.commit()
+    return _channel_with_members(session, channel=channel, unread=0)
+
+
+def join_channel(session: Session, *, actor: User, channel_id: UUID) -> TeamChannelResponse:
+    channel = _channel(session, tenant_id=actor.tenant_id, channel_id=channel_id)
+    membership = _membership(
+        session, tenant_id=actor.tenant_id, channel_id=channel.id, user_id=actor.id
+    )
+    if membership is not None:
+        unread = _unread_counts(session, tenant_id=actor.tenant_id, user_id=actor.id)
+        return _channel_with_members(
+            session, channel=channel, unread=unread.get(channel.id, 0)
+        )
+    if channel.is_private:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "This is a private channel. Ask a member to add you.",
+        )
+    session.add(TeamChannelMember(
+        tenant_id=actor.tenant_id, channel_id=channel.id, user_id=actor.id,
+        role=TeamChannelRole.MEMBER.value,
+    ))
+    session.commit()
+    return _channel_with_members(session, channel=channel, unread=0)
 
 
 def leave_channel(session: Session, *, actor: User, channel_id: UUID) -> None:
-    """Remove the current user's membership from a channel."""
-
-    channel = _channel(session, actor=actor, channel_id=channel_id)
-    membership = _require_membership(session, actor=actor, channel_id=channel.id)
+    channel = _channel(session, tenant_id=actor.tenant_id, channel_id=channel_id)
+    membership = _require_membership(
+        session, tenant_id=actor.tenant_id, channel_id=channel.id, user_id=actor.id
+    )
+    if channel.is_general:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The general channel cannot be left.")
     session.delete(membership)
     session.commit()
 
 
-def list_channels(session: Session, *, actor: User) -> ChatChannelListResponse:
-    """List public channels and private channels the user belongs to."""
-
-    channels = repository.list_visible_channels(
-        session, tenant_id=actor.tenant_id, user_id=actor.id
-    )
-    counts = repository.member_count_map(session, tenant_id=actor.tenant_id)
-    return ChatChannelListResponse(
-        items=[
-            _channel_response(channel, member_count=counts.get(channel.id, 0))
-            for channel in channels
-        ],
-        total=len(channels),
-    )
-
-
-def list_members(
-    session: Session, *, actor: User, channel_id: UUID
-) -> list[ChatChannelMemberResponse]:
-    """List members only after verifying the caller is a member."""
-
-    channel = _channel(session, actor=actor, channel_id=channel_id)
-    _require_membership(session, actor=actor, channel_id=channel.id)
-    return [
-        _member_response(member)
-        for member in repository.list_members(
-            session, tenant_id=actor.tenant_id, channel_id=channel.id
+def list_channels(session: Session, *, actor: User) -> tuple[list[TeamChannelResponse], int]:
+    channels = list(session.scalars(
+        select(TeamChannel)
+        .join(TeamChannelMember, TeamChannelMember.channel_id == TeamChannel.id)
+        .where(
+            TeamChannel.tenant_id == actor.tenant_id,
+            TeamChannelMember.tenant_id == actor.tenant_id,
+            TeamChannelMember.user_id == actor.id,
         )
+        .order_by(TeamChannel.is_general.desc(), TeamChannel.created_at, TeamChannel.id)
+    ).all())
+    unread = _unread_counts(session, tenant_id=actor.tenant_id, user_id=actor.id)
+    member_counts = _member_count_map(session, tenant_id=actor.tenant_id)
+    items = [
+        _channel_response(
+            channel, unread=unread.get(channel.id, 0),
+            member_count=member_counts.get(channel.id, 0),
+        )
+        for channel in channels
     ]
-
-
-def post_message(
-    session: Session,
-    *,
-    actor: User,
-    channel_id: UUID,
-    payload: ChatMessageCreateRequest,
-) -> ChatMessageResponse:
-    """Post a message as the current member of a channel."""
-
-    channel = _channel(session, actor=actor, channel_id=channel_id)
-    _require_membership(session, actor=actor, channel_id=channel.id)
-    now = utcnow()
-    message = ChatMessage(
-        tenant_id=actor.tenant_id,
-        channel_id=channel.id,
-        sender_user_id=actor.id,
-        body=payload.body,
-        created_at=now,
-        updated_at=now,
-    )
-    session.add(message)
-    channel.updated_at = now
-    session.commit()
-    session.refresh(message)
-    return _message_response(message)
+    return items, sum(unread.values())
 
 
 def _decode_before(before: str | None) -> tuple[datetime, UUID] | None:
@@ -308,89 +366,120 @@ def _decode_before(before: str | None) -> tuple[datetime, UUID] | None:
         timestamp, identifier = json.loads(raw)
         return datetime.fromisoformat(timestamp.replace("Z", "+00:00")), UUID(identifier)
     except (ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid message cursor."
-        ) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid message cursor.") from exc
 
 
-def _encode_before(message: ChatMessage) -> str:
-    value = json.dumps(
-        [message.created_at.isoformat(), str(message.id)], separators=(",", ":")
-    )
+def _encode_before(message: TeamMessage) -> str:
+    value = json.dumps([message.created_at.isoformat(), str(message.id)], separators=(",", ":"))
     return base64.urlsafe_b64encode(value.encode("ascii")).decode("ascii")
 
 
+def _message_response(message: TeamMessage) -> TeamMessageResponse:
+    return TeamMessageResponse(
+        id=message.id, channel_id=message.channel_id,
+        author_user_id=message.author_user_id, author=_staff_response(message.author),
+        body=message.body, mentions=[UUID(value) for value in message.mentions],
+        created_at=message.created_at, edited_at=message.edited_at,
+    )
+
+
 def list_messages(
-    session: Session,
-    *,
-    actor: User,
-    channel_id: UUID,
-    page: int = 1,
-    page_size: int = 50,
-    before: str | None = None,
-    limit: int | None = None,
-) -> ChatMessageListResponse:
-    """Return a member-only, newest-first page of channel messages."""
-
-    channel = _channel(session, actor=actor, channel_id=channel_id)
-    _require_membership(session, actor=actor, channel_id=channel.id)
-    page_size = limit if limit is not None else page_size
+    session: Session, *, actor: User, channel_id: UUID,
+    before: str | None = None, limit: int = DEFAULT_PAGE_SIZE,
+) -> tuple[list[TeamMessageResponse], str | None]:
+    _channel(session, tenant_id=actor.tenant_id, channel_id=channel_id)
+    _require_membership(
+        session, tenant_id=actor.tenant_id, channel_id=channel_id, user_id=actor.id
+    )
     cursor = _decode_before(before)
-    messages = repository.list_messages(
-        session,
-        tenant_id=actor.tenant_id,
-        channel_id=channel.id,
-        offset=(page - 1) * page_size,
-        limit=page_size + 1,
-        cursor=cursor,
-    )
-    has_more = len(messages) > page_size
-    items = messages[:page_size]
-    total = repository.count_messages(
-        session, tenant_id=actor.tenant_id, channel_id=channel.id
-    )
-    return ChatMessageListResponse(
-        items=[_message_response(message) for message in items],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size if total else 0,
-        next_before=_encode_before(items[-1]) if has_more and items else None,
+    conditions = [
+        TeamMessage.tenant_id == actor.tenant_id,
+        TeamMessage.channel_id == channel_id,
+    ]
+    if cursor is not None:
+        timestamp, identifier = cursor
+        conditions.append(or_(
+            TeamMessage.created_at < timestamp,
+            and_(TeamMessage.created_at == timestamp, TeamMessage.id < identifier),
+        ))
+    messages = list(session.scalars(
+        select(TeamMessage)
+        .options(joinedload(TeamMessage.author))
+        .where(*conditions)
+        .order_by(TeamMessage.created_at.desc(), TeamMessage.id.desc())
+        .limit(limit + 1)
+    ).all())
+    has_more = len(messages) > limit
+    page = messages[:limit]
+    return (
+        [_message_response(message) for message in page],
+        _encode_before(page[-1]) if has_more and page else None,
     )
 
 
-def edit_message(
-    session: Session,
-    *,
-    actor: User,
-    message_id: UUID,
-    payload: ChatMessageUpdateRequest,
-) -> ChatMessageResponse:
-    """Edit only the caller's own message and record its edit timestamp."""
-
-    message = repository.get_message_by_id(
-        session, message_id, tenant_id=actor.tenant_id
+def send_message(
+    session: Session, *, actor: User, channel_id: UUID, payload: TeamMessageCreateRequest
+) -> TeamMessageResponse:
+    _channel(session, tenant_id=actor.tenant_id, channel_id=channel_id)
+    _require_membership(
+        session, tenant_id=actor.tenant_id, channel_id=channel_id, user_id=actor.id
     )
-    if message is None:
-        raise ChatMessageNotFoundError()
-    _channel(session, actor=actor, channel_id=message.channel_id)
-    _require_membership(session, actor=actor, channel_id=message.channel_id)
-    if message.sender_user_id != actor.id:
-        raise ChatMessageEditForbiddenError()
-    now = utcnow()
-    message.body = payload.body
-    message.edited_at = now
-    message.updated_at = now
+    body = payload.body.strip()
+    if not 1 <= len(body) <= 4000:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Message body must contain 1 to 4000 characters.")
+    _tenant_staff(session, tenant_id=actor.tenant_id, user_ids=payload.mentions)
+    message = TeamMessage(
+        tenant_id=actor.tenant_id, channel_id=channel_id, author_user_id=actor.id,
+        body=body, mentions=[str(user_id) for user_id in dict.fromkeys(payload.mentions)],
+    )
+    session.add(message)
     session.commit()
-    session.refresh(message)
     return _message_response(message)
 
 
-def list_staff(
-    session: Session, *, actor: User, search: str | None, limit: int
-) -> list[User]:
-    """Find active staff in the caller's tenant for channel invitations."""
+def edit_message(
+    session: Session, *, actor: User, message_id: UUID, payload: TeamMessageEditRequest
+) -> TeamMessageResponse:
+    """Edit a message's body. Author-only and membership-checked."""
+    message = session.scalar(
+        select(TeamMessage).where(
+            TeamMessage.id == message_id, TeamMessage.tenant_id == actor.tenant_id
+        )
+    )
+    if message is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Message not found.")
+    _require_membership(
+        session, tenant_id=actor.tenant_id, channel_id=message.channel_id, user_id=actor.id
+    )
+    if message.author_user_id != actor.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the author can edit this message.")
+    body = payload.body.strip()
+    if not 1 <= len(body) <= 4000:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Message body must contain 1 to 4000 characters.")
+    message.body = body
+    message.edited_at = utcnow()
+    session.commit()
+    return _message_response(message)
 
+
+def mark_read(
+    session: Session, *, actor: User, channel_id: UUID
+) -> TeamChannelMember:
+    _channel(session, tenant_id=actor.tenant_id, channel_id=channel_id)
+    membership = _require_membership(
+        session, tenant_id=actor.tenant_id, channel_id=channel_id, user_id=actor.id
+    )
+    membership.last_read_at = utcnow()
+    session.commit()
+    return membership
+
+
+def list_unread_totals(session: Session, *, actor: User) -> tuple[int, dict[str, int]]:
+    counts = _unread_counts(session, tenant_id=actor.tenant_id, user_id=actor.id)
+    return sum(counts.values()), {str(channel_id): count for channel_id, count in counts.items()}
+
+
+def list_staff(session: Session, *, actor: User, search: str | None, limit: int) -> list[User]:
     statement = (
         select(User)
         .join(Role, User.role_id == Role.id)
@@ -403,10 +492,5 @@ def list_staff(
     needle = (search or "").strip()
     if needle:
         pattern = f"%{needle.lower()}%"
-        statement = statement.where(
-            or_(
-                func.lower(User.full_name).like(pattern),
-                func.lower(User.email).like(pattern),
-            )
-        )
+        statement = statement.where(or_(func.lower(User.full_name).like(pattern), func.lower(User.email).like(pattern)))
     return list(session.scalars(statement.order_by(User.full_name, User.id).limit(limit)).all())

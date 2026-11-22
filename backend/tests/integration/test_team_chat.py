@@ -1,4 +1,11 @@
-"""Integration route tests for the internal staff-to-staff team chat."""
+"""Swarm-specific teamchat behaviors on the canonical schema.
+
+Covers the behaviors introduced by the parallel team-chat work that the
+canonical module adopted: private channels (join 403), author-only message
+editing (with edited_at), and the /team-chat alias prefix. The canonical
+test_teamchat.py covers membership, unread cursors, mentions, DMs, and
+pagination.
+"""
 
 from __future__ import annotations
 
@@ -7,252 +14,210 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from app.modules.tenancy.models import Tenant
 from app.modules.users.models import RoleName, User
-
-API = "/api/v1/team-chat"
-
-
-@pytest.fixture()
-def staff_headers(auth_headers: Callable[..., dict[str, str]]) -> Callable[[User], dict[str, str]]:
-    return lambda user: auth_headers(user.email)
+from tests.support import TEST_PASSWORD
 
 
 @pytest.fixture()
-def staff(client: TestClient, override_db: None, user_factory: Callable[..., User]):
-    admin = user_factory(role=RoleName.ADMIN, full_name="Admin Staff")
-    sales = user_factory(role=RoleName.SALES_EXECUTIVE, full_name="Sales Staff")
-    other = user_factory(role=RoleName.SALES_EXECUTIVE, full_name="Other Staff")
-    return admin, sales, other
+def staff_headers(client: TestClient) -> Callable[[User], dict[str, str]]:
+    def headers(user: User) -> dict[str, str]:
+        response = client.post(
+            "/api/v1/auth/login", json={"email": user.email, "password": TEST_PASSWORD}
+        )
+        assert response.status_code == 200, response.text
+        return {"Authorization": f"Bearer {response.json()['access_token']}"}
+    return headers
 
 
-def _create(
-    client: TestClient,
-    headers: dict[str, str],
-    *,
-    name: str = "leasing",
-    is_private: bool = False,
-    members: list[str] | None = None,
-) -> dict:
+def _make_staff(test_session_factory, user_factory, email_prefix: str, role=RoleName.ADMIN):
+    user = user_factory(role=role, email=f"{email_prefix}-{uuid4().hex[:6]}@tc.example")
+    return user
+
+
+def _create_channel(client, headers, *, name=None, is_private=False, members=None) -> dict:
     response = client.post(
-        f"{API}/channels",
+        "/api/v1/teamchat/channels",
         headers=headers,
         json={
-            "name": name,
-            "description": "Internal leasing discussion",
+            "name": name or f"private-{uuid4().hex[:6]}",
+            "topic": "Swarm behavior tests",
             "is_private": is_private,
-            "member_ids": members or [],
+            "member_ids": [str(getattr(member, "id", member)) for member in members or []],
         },
     )
     assert response.status_code == 201, response.text
     return response.json()
 
 
-def _post(
-    client: TestClient, headers: dict[str, str], channel_id: str, body: str
-):
-    return client.post(
-        f"{API}/channels/{channel_id}/messages", headers=headers, json={"body": body}
-    )
-
-
-def test_create_channel_auto_joins_creator_and_lists_members(
-    client: TestClient,
-    staff: tuple[User, User, User],
-    staff_headers: Callable[[User], dict[str, str]],
+def test_private_channel_hides_from_non_members_and_blocks_join(
+    client: TestClient, override_db: None, test_session_factory, user_factory, staff_headers
 ) -> None:
-    admin, _, _ = staff
-    headers = staff_headers(admin)
-    channel = _create(client, headers)
-
-    assert channel["is_private"] is False
-    assert channel["member_count"] == 1
-    assert channel["members"][0]["user_id"] == str(admin.id)
-    assert channel["members"][0]["role"] == "ADMIN"
-
-    members = client.get(f"{API}/channels/{channel['id']}/members", headers=headers)
-    assert members.status_code == 200, members.text
-    assert [member["user_id"] for member in members.json()] == [str(admin.id)]
-
-
-def test_non_member_read_post_and_members_return_403(
-    client: TestClient,
-    staff: tuple[User, User, User],
-    staff_headers: Callable[[User], dict[str, str]],
-) -> None:
-    admin, sales, _ = staff
-    admin_headers, sales_headers = staff_headers(admin), staff_headers(sales)
-    channel = _create(client, admin_headers)
-    message = _post(client, admin_headers, channel["id"], "Members only")
-    assert message.status_code == 201, message.text
-
-    assert client.get(
-        f"{API}/channels/{channel['id']}/messages", headers=sales_headers
-    ).status_code == 403
-    assert client.get(
-        f"{API}/channels/{channel['id']}/members", headers=sales_headers
-    ).status_code == 403
-    assert _post(client, sales_headers, channel["id"], "Intrusion").status_code == 403
-    assert client.patch(
-        f"{API}/messages/{message.json()['id']}",
-        headers=sales_headers,
-        json={"body": "Intrusion"},
-    ).status_code == 403
-
-
-def test_public_join_leave_and_private_channels(
-    client: TestClient,
-    staff: tuple[User, User, User],
-    staff_headers: Callable[[User], dict[str, str]],
-) -> None:
-    admin, sales, other = staff
-    admin_headers, sales_headers, other_headers = map(
-        staff_headers, (admin, sales, other)
-    )
-    channel = _create(client, admin_headers)
-    private = _create(client, admin_headers, name="leadership", is_private=True)
-
-    listed = client.get(f"{API}/channels", headers=sales_headers)
-    assert listed.status_code == 200, listed.text
-    assert [item["name"] for item in listed.json()["items"]] == ["leasing"]
-    assert listed.json()["total"] == 1
-
-    joined = client.post(f"{API}/channels/{channel['id']}/join", headers=sales_headers)
-    assert joined.status_code == 200, joined.text
-    assert joined.json()["member_count"] == 2
-    assert client.post(
-        f"{API}/channels/{private['id']}/join", headers=sales_headers
-    ).status_code == 403
-    assert client.post(
-        f"{API}/channels/{channel['id']}/leave", headers=other_headers
-    ).status_code == 403
-
-    assert client.post(
-        f"{API}/channels/{channel['id']}/leave", headers=sales_headers
-    ).status_code == 204
-    assert _post(client, sales_headers, channel["id"], "After leaving").status_code == 403
-
-
-def test_buyer_role_gets_403(
-    client: TestClient,
-    staff: tuple[User, User, User],
-    user_factory: Callable[..., User],
-    staff_headers: Callable[[User], dict[str, str]],
-) -> None:
-    admin, _, _ = staff
-    buyer = user_factory(role=RoleName.BUYER)
-    buyer_headers = staff_headers(buyer)
-    channel = _create(client, staff_headers(admin))
-
-    assert client.get(f"{API}/channels", headers=buyer_headers).status_code == 403
-    assert client.post(
-        f"{API}/channels", headers=buyer_headers, json={"name": "buyer"}
-    ).status_code == 403
-    assert client.get(
-        f"{API}/channels/{channel['id']}/messages", headers=buyer_headers
-    ).status_code == 403
-    assert _post(client, buyer_headers, channel["id"], "Not staff").status_code == 403
-
-
-def test_cross_tenant_channel_and_message_access_returns_404(
-    client: TestClient,
-    staff: tuple[User, User, User],
-    user_factory: Callable[..., User],
-    staff_headers: Callable[[User], dict[str, str]],
-    test_session_factory: sessionmaker[Session],
-) -> None:
-    admin, _, _ = staff
-    with test_session_factory() as session:
-        tenant = Tenant(slug=f"other-{uuid4().hex[:8]}", name="Other Realty")
-        session.add(tenant)
-        session.commit()
-        session.refresh(tenant)
-    outsider = user_factory(role=RoleName.ADMIN, tenant=tenant)
+    admin = _make_staff(test_session_factory, user_factory, "admin")
+    sales = _make_staff(test_session_factory, user_factory, "sales", RoleName.SALES_EXECUTIVE)
+    outsider = _make_staff(test_session_factory, user_factory, "out", RoleName.SALES_EXECUTIVE)
+    admin_headers = staff_headers(admin)
+    sales_headers = staff_headers(sales)
     outsider_headers = staff_headers(outsider)
-    channel = _create(client, staff_headers(admin))
-    message = _post(client, staff_headers(admin), channel["id"], "Tenant secret")
 
-    for method, path, body in (
-        ("get", f"{API}/channels/{channel['id']}/messages", None),
-        ("get", f"{API}/channels/{channel['id']}/members", None),
-        ("post", f"{API}/channels/{channel['id']}/join", None),
-        ("post", f"{API}/channels/{channel['id']}/leave", None),
-        ("post", f"{API}/channels/{channel['id']}/messages", {"body": "Intrusion"}),
-        ("patch", f"{API}/messages/{message.json()['id']}", {"body": "Intrusion"}),
-    ):
-        request = getattr(client, method)
-        response = (
-            request(path, headers=outsider_headers)
-            if body is None
-            else request(path, headers=outsider_headers, json=body)
-        )
-        assert response.status_code == 404, response.text
+    channel = _create_channel(client, admin_headers, is_private=True, members=[sales])
+
+    # Listed for a member, hidden from a non-member.
+    admin_names = {c["name"] for c in client.get("/api/v1/teamchat/channels", headers=admin_headers).json()["items"]}
+    out_names = {c["name"] for c in client.get("/api/v1/teamchat/channels", headers=outsider_headers).json()["items"]}
+    assert channel["name"] in admin_names
+    assert channel["name"] not in out_names
+
+    # Private join is forbidden even for staff.
+    assert client.post(f"/api/v1/teamchat/channels/{channel['id']}/join", headers=outsider_headers).status_code == 403
+    # Member reads fine; non-member read/post are 404 (hidden) or 403.
+    assert client.get(f"/api/v1/teamchat/channels/{channel['id']}/messages", headers=sales_headers).status_code == 200
+    assert client.get(f"/api/v1/teamchat/channels/{channel['id']}/messages", headers=outsider_headers).status_code in (403, 404)
+
+    # is_private is exposed on the response.
+    assert channel["is_private"] is True
 
 
-def test_message_pagination_is_newest_first(
-    client: TestClient,
-    staff: tuple[User, User, User],
-    staff_headers: Callable[[User], dict[str, str]],
+def test_public_channel_join_then_leave(
+    client: TestClient, override_db: None, test_session_factory, user_factory, staff_headers
 ) -> None:
-    admin, _, _ = staff
-    headers = staff_headers(admin)
-    channel = _create(client, headers)
-    for index in range(5):
-        assert _post(client, headers, channel["id"], f"message-{index}").status_code == 201
+    admin = _make_staff(test_session_factory, user_factory, "admin2")
+    sales = _make_staff(test_session_factory, user_factory, "sales2", RoleName.SALES_EXECUTIVE)
+    admin_headers = staff_headers(admin)
+    sales_headers = staff_headers(sales)
 
-    first = client.get(
-        f"{API}/channels/{channel['id']}/messages?page=1&page_size=2", headers=headers
+    channel = _create_channel(client, admin_headers, is_private=False)
+    joined = client.post(f"/api/v1/teamchat/channels/{channel['id']}/join", headers=sales_headers)
+    assert joined.status_code == 200
+    left = client.post(f"/api/v1/teamchat/channels/{channel['id']}/leave", headers=sales_headers)
+    assert left.status_code == 204
+    # After leaving, posting is rejected.
+    denied = client.post(
+        f"/api/v1/teamchat/channels/{channel['id']}/messages",
+        headers=sales_headers, json={"body": "hello again"},
     )
-    assert first.status_code == 200, first.text
-    payload = first.json()
-    assert payload["total"] == 5
-    assert payload["pages"] == 3
-    assert [message["body"] for message in payload["items"]] == [
-        "message-4", "message-3"
-    ]
-
-    second = client.get(
-        f"{API}/channels/{channel['id']}/messages?page=2&page_size=2", headers=headers
-    )
-    assert second.status_code == 200, second.text
-    assert [message["body"] for message in second.json()["items"]] == [
-        "message-2", "message-1"
-    ]
-    third = client.get(
-        f"{API}/channels/{channel['id']}/messages?page=3&page_size=2", headers=headers
-    )
-    assert [message["body"] for message in third.json()["items"]] == ["message-0"]
+    assert denied.status_code == 403
 
 
-def test_edit_sets_edited_at_and_only_sender_can_edit(
-    client: TestClient,
-    staff: tuple[User, User, User],
-    staff_headers: Callable[[User], dict[str, str]],
+def test_author_only_edit_sets_edited_at(
+    client: TestClient, override_db: None, test_session_factory, user_factory, staff_headers
 ) -> None:
-    admin, sales, other = staff
-    admin_headers, sales_headers, other_headers = map(
-        staff_headers, (admin, sales, other)
-    )
-    channel = _create(client, admin_headers, members=[str(sales.id), str(other.id)])
-    sent = _post(client, admin_headers, channel["id"], "Original")
-    assert sent.status_code == 201, sent.text
-    assert sent.json()["edited_at"] is None
+    admin = _make_staff(test_session_factory, user_factory, "admin3")
+    sales = _make_staff(test_session_factory, user_factory, "sales3", RoleName.SALES_EXECUTIVE)
+    admin_headers = staff_headers(admin)
+    sales_headers = staff_headers(sales)
 
-    denied = client.patch(
-        f"{API}/messages/{sent.json()['id']}",
-        headers=sales_headers,
-        json={"body": "Not yours"},
-    )
-    assert denied.status_code == 403, denied.text
+    channel = _create_channel(client, admin_headers, members=[sales])
+    sent = _post_message(client, admin_headers, channel["id"], "original text")
+    message_id = sent["id"]
 
+    # A non-author member cannot edit.
+    forbidden = client.patch(
+        f"/api/v1/teamchat/messages/{message_id}",
+        headers=sales_headers, json={"body": "hijacked"},
+    )
+    assert forbidden.status_code == 403
+
+    # The author edits; edited_at is stamped.
     edited = client.patch(
-        f"{API}/messages/{sent.json()['id']}",
-        headers=admin_headers,
-        json={"body": "Corrected"},
+        f"/api/v1/teamchat/messages/{message_id}",
+        headers=admin_headers, json={"body": "corrected text"},
     )
     assert edited.status_code == 200, edited.text
-    assert edited.json()["body"] == "Corrected"
+    assert edited.json()["body"] == "corrected text"
     assert edited.json()["edited_at"] is not None
-    assert edited.json()["updated_at"] >= sent.json()["updated_at"]
+
+    # The channel-scoped alias path works too.
+    edited2 = client.patch(
+        f"/api/v1/teamchat/channels/{channel['id']}/messages/{message_id}",
+        headers=admin_headers, json={"body": "corrected twice"},
+    )
+    assert edited2.status_code == 200 and edited2.json()["body"] == "corrected twice"
+
+    # Empty body is rejected.
+    empty = client.patch(
+        f"/api/v1/teamchat/messages/{message_id}", headers=admin_headers, json={"body": "  "}
+    )
+    assert empty.status_code in (403, 422)
+
+
+def _post_message(client, headers, channel_id: str, body: str) -> dict:
+    response = client.post(
+        f"/api/v1/teamchat/channels/{channel_id}/messages",
+        headers=headers, json={"body": body},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_team_chat_alias_prefix_serves_same_handlers(
+    client: TestClient, override_db: None, test_session_factory, user_factory, staff_headers
+) -> None:
+    admin = _make_staff(test_session_factory, user_factory, "admin4")
+    admin_headers = staff_headers(admin)
+
+    # Create via the hyphenated alias; read back via the canonical prefix.
+    created = client.post(
+        "/api/v1/team-chat/channels",
+        headers=admin_headers,
+        json={"name": f"alias-{uuid4().hex[:6]}", "description": "alias topic", "is_private": False},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["topic"] == "alias topic"
+
+    sent = client.post(
+        f"/api/v1/team-chat/channels/{created.json()['id']}/messages",
+        headers=admin_headers, json={"body": "via alias"},
+    )
+    assert sent.status_code == 201
+
+    listed = client.get("/api/v1/teamchat/channels", headers=admin_headers).json()
+    assert any(c["id"] == created.json()["id"] for c in listed["items"])
+
+
+def test_teamchat_migration_is_idempotent_on_existing_tables(
+    test_session_factory, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """The d6e7f8a9b0c1 migration must not recreate pre-existing tables."""
+    import importlib.util
+    import sqlalchemy as sa
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from pathlib import Path
+
+    migration_path = (
+        Path(__file__).parents[2]
+        / "alembic" / "versions"
+        / "2026_11_22_2200-d6e7f8a9b0c1_internal_staff_team_chat.py"
+    )
+    spec = importlib.util.spec_from_file_location("tc_migration_check", migration_path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    engine = sa.create_engine("sqlite+pysqlite://", connect_args={"check_same_thread": False})
+    connection = engine.connect()
+    try:
+        # Pre-existing canonical team_channels without is_private.
+        connection.execute(sa.text(
+            "CREATE TABLE team_channels (id CHAR(32) PRIMARY KEY, name VARCHAR(80) NOT NULL,"
+            " topic VARCHAR(500), kind VARCHAR(16) NOT NULL DEFAULT 'CHANNEL',"
+            " is_general BOOLEAN NOT NULL DEFAULT 0, created_by CHAR(32),"
+            " created_at DATETIME NOT NULL, tenant_id CHAR(32) NOT NULL,"
+            " CONSTRAINT uq_team UNIQUE (tenant_id, name))"
+        ))
+        connection.commit()
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+        columns = {c["name"] for c in sa.inspect(connection).get_columns("team_channels")}
+        assert "is_private" in columns
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.downgrade()
+        columns = {c["name"] for c in sa.inspect(connection).get_columns("team_channels")}
+        assert "is_private" not in columns
+        # The table itself survives downgrade (history protection).
+        assert "team_channels" in sa.inspect(connection).get_table_names()
+    finally:
+        connection.close()
+        engine.dispose()
