@@ -47,9 +47,15 @@ _receipt_post_lock = Lock()
 
 
 def create_booking(
-    session: Session, *, actor, payload: SaleBookingCreateRequest
+    session: Session, *, actor, payload: SaleBookingCreateRequest, commit: bool = True
 ) -> SaleBooking:
-    """Book a converted lead into a unit; one sale booking per lead."""
+    """Book a converted lead into a unit; one sale booking per lead.
+
+    ``unit_id`` (optional, PF-010) links to a canonical PropertyUnit in the
+    same tenant and project as the lead. ``commit=False`` lets the inventory
+    conversion flow share one transaction with the hold and unit updates;
+    legacy callers keep the default and get the original behavior.
+    """
 
     lead = session.scalar(
         select(Lead).where(Lead.id == payload.lead_id, Lead.tenant_id == actor.tenant_id)
@@ -63,6 +69,23 @@ def create_booking(
         )
     if repository.get_booking_by_lead(session, lead.id, tenant_id=actor.tenant_id):
         raise SaleBookingExistsError()
+
+    if payload.unit_id is not None:
+        from app.modules.inventory.models import PropertyUnit
+
+        unit = session.scalar(
+            select(PropertyUnit).where(
+                PropertyUnit.id == payload.unit_id,
+                PropertyUnit.tenant_id == actor.tenant_id,
+            )
+        )
+        if unit is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found.")
+        if unit.project_id != lead.project_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "The unit and lead belong to different projects.",
+            )
 
     customer = None
     if lead.email:
@@ -84,6 +107,7 @@ def create_booking(
         project_id=lead.project_id,
         customer_id=customer.id if customer else None,
         unit_number=payload.unit_number,
+        unit_id=payload.unit_id,
         configuration=payload.configuration or lead.preferred_configuration,
         carpet_area_sqft=payload.carpet_area_sqft,
         consideration_paise=payload.consideration_paise,
@@ -91,8 +115,11 @@ def create_booking(
         status=SaleStatus.BOOKED.value,
     )
     session.add(booking)
-    session.commit()
-    session.refresh(booking)
+    if commit:
+        session.commit()
+        session.refresh(booking)
+    else:
+        session.flush()
     return booking
 
 

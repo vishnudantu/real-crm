@@ -21,6 +21,10 @@ class SaleBookingCreateRequest(BaseModel):
 
     lead_id: UUID
     unit_number: str = Field(min_length=1, max_length=64)
+    unit_id: UUID | None = Field(
+        default=None,
+        description="Canonical unit (PF-010). Optional; must be same-tenant and same-project when set.",
+    )
     configuration: str | None = Field(default=None, max_length=100)
     carpet_area_sqft: int | None = Field(default=None, ge=1)
     consideration_paise: int = Field(ge=0)
@@ -46,6 +50,7 @@ class SaleBookingResponse(BaseModel):
     project_id: UUID
     customer_id: UUID | None
     unit_number: str
+    unit_id: UUID | None
     configuration: str | None
     carpet_area_sqft: int | None
     consideration_paise: int
