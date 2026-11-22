@@ -1,24 +1,31 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
-import { normalizeBranding, resolveTenantSlug } from "../tenant/branding";
-import { publicBrandingQueryKey } from "../tenant/TenantProvider";
-import { updateTenantBranding } from "../tenant/api";
-import type { UpdateTenantBrandingPayload } from "../tenant/types";
-import { BrandingSettingsTab } from "./settings/BrandingSettingsTab";
+import { NavLink, useLocation } from "react-router-dom";
+import type { LucideIcon } from "lucide-react";
 import {
   AlertCircle,
   Bell,
   Bot,
   CheckCircle2,
+  Code2,
   FileText,
+  Languages,
   LoaderCircle,
   Megaphone,
   MessageSquare,
+  Palette,
   Scale,
   Settings,
   Shield,
 } from "lucide-react";
+import { normalizeBranding, resolveTenantSlug } from "../tenant/branding";
+import { publicBrandingQueryKey } from "../tenant/TenantProvider";
+import { updateTenantBranding } from "../tenant/api";
+import type { UpdateTenantBrandingPayload } from "../tenant/types";
+import { BrandingSettingsTab } from "./settings/BrandingSettingsTab";
+import { AIAssistantSettingsTab } from "./settings/AIAssistantSettingsTab";
+import { LanguageSettingsPanel } from "./settings/LanguageSettingsPanel";
+import { WebsiteWidgetInstaller } from "../omnichannel/WebsiteWidgetInstaller";
 import type {
   AllSystemSettingsResponse,
   AuditLogListResponse,
@@ -48,15 +55,13 @@ import {
 import { RemindersConfigTab } from "./settings/RemindersConfigTab";
 import { SystemNotificationsTab } from "./settings/SystemNotificationsTab";
 import { NotificationTemplatesTab } from "./settings/NotificationTemplatesTab";
-import { AIAssistantSettingsTab } from "./settings/AIAssistantSettingsTab";
 import { LeadAssignmentTab } from "./settings/LeadAssignmentTab";
 import { AuditLogsTab } from "./settings/AuditLogsTab";
+import { resolveSettingsTab } from "./adminNavigation";
+import { useFeatures } from "../features/FeaturesProvider";
+import { errorMessage } from "../shared/apiRequest";
 
-const MessagingTab = lazy(() =>
-  import("./settings/MessagingTab").then((module) => ({
-    default: module.MessagingTab,
-  })),
-);
+const MessagingTab = lazy(() => import("./settings/MessagingTab").then((module) => ({ default: module.MessagingTab })));
 
 export type SettingsTab =
   | "reminders"
@@ -64,59 +69,74 @@ export type SettingsTab =
   | "templates"
   | "messaging"
   | "ai_assistant"
+  | "languages"
   | "lead_assignment"
   | "audit_logs"
-  | "branding";
+  | "branding"
+  | "widget";
 
 export interface SystemSettingsPageProps {
   initialTab?: SettingsTab;
 }
 
-const VALID_TABS: SettingsTab[] = [
-  "reminders",
-  "notifications",
-  "templates",
-  "messaging",
-  "ai_assistant",
-  "lead_assignment",
-  "audit_logs",
-  "branding",
+const VALID_TABS = new Set<SettingsTab>([
+  "reminders", "notifications", "templates", "messaging", "ai_assistant",
+  "languages", "lead_assignment", "audit_logs", "branding", "widget",
+]);
+
+interface SettingsTabDefinition {
+  id: SettingsTab;
+  label: string;
+  to: string;
+  icon: LucideIcon;
+  feature?: string;
+}
+
+const SETTINGS_TABS: readonly SettingsTabDefinition[] = [
+  { id: "branding", label: "Branding", to: "/admin/settings/branding", icon: Palette },
+  { id: "ai_assistant", label: "AI Assistant", to: "/admin/settings/ai", icon: Bot },
+  { id: "languages", label: "Languages", to: "/admin/settings/languages", icon: Languages },
+  { id: "reminders", label: "Reminders & Alerts", to: "/admin/settings/reminders", icon: Bell },
+  { id: "lead_assignment", label: "Lead Assignment", to: "/admin/settings/assignment", icon: Scale },
+  { id: "messaging", label: "Messaging", to: "/admin/settings/messaging", icon: MessageSquare },
+  { id: "widget", label: "Website Widget", to: "/admin/settings/widget", icon: Code2, feature: "omnichannel_inbox" },
+  { id: "notifications", label: "System Notifications", to: "/admin/notifications", icon: Megaphone },
+  { id: "templates", label: "Notification Templates", to: "/admin/settings/templates", icon: FileText },
+  { id: "audit_logs", label: "Audit Trail", to: "/admin/audit-logs", icon: Shield },
 ];
 
-export function SystemSettingsPage({ initialTab }: SystemSettingsPageProps = {}) {
-  const [searchParams] = useSearchParams();
-  const queryClient = useQueryClient();
-  const urlTab = searchParams.get("tab") as SettingsTab | null;
-
-  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
-    if (initialTab && VALID_TABS.includes(initialTab)) return initialTab;
-    if (urlTab && VALID_TABS.includes(urlTab)) return urlTab;
-    return "reminders";
-  });
-
-  useEffect(() => {
-    if (initialTab && VALID_TABS.includes(initialTab)) {
-      setActiveTab(initialTab);
-    } else if (urlTab && VALID_TABS.includes(urlTab)) {
-      setActiveTab(urlTab);
+function tabFromPath(
+  pathname: string,
+  search: string,
+  initialTab?: SettingsTab,
+): SettingsTab {
+  if (initialTab && VALID_TABS.has(initialTab)) return initialTab;
+  if (pathname === "/admin/settings") {
+    // Legacy deep links used ?tab=<id>; path segments are the canonical form.
+    const queryTab = new URLSearchParams(search).get("tab");
+    if (queryTab && VALID_TABS.has(queryTab as SettingsTab)) {
+      return queryTab as SettingsTab;
     }
-  }, [initialTab, urlTab]);
+  }
+  const tab = resolveSettingsTab(pathname);
+  return VALID_TABS.has(tab as SettingsTab) ? (tab as SettingsTab) : "branding";
+}
 
+export function SystemSettingsPage({ initialTab }: SystemSettingsPageProps = {}) {
+  const { pathname, search } = useLocation();
+  const { enabled } = useFeatures();
+  const queryClient = useQueryClient();
+  const activeTab = tabFromPath(pathname, search, initialTab);
   const [settings, setSettings] = useState<AllSystemSettingsResponse | null>(null);
   const [templates, setTemplates] = useState<NotificationTemplateItem[]>([]);
   const [notificationsData, setNotificationsData] = useState<SystemNotificationListResponse | null>(null);
   const [logsData, setLogsData] = useState<AuditLogListResponse | null>(null);
-
-  // Filters & Pagination
   const [notifPage, setNotifPage] = useState(1);
   const [notifType, setNotifType] = useState("ALL");
   const [notifSearch, setNotifSearch] = useState("");
-
   const [auditPage, setAuditPage] = useState(1);
   const [auditAction, setAuditAction] = useState("ALL");
   const [auditSearch, setAuditSearch] = useState("");
-
-  // Loading & Submitting flags
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isTriggering, setIsTriggering] = useState(false);
@@ -125,196 +145,141 @@ export function SystemSettingsPage({ initialTab }: SystemSettingsPageProps = {})
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 4000);
-      return () => clearTimeout(timer);
-    }
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(timer);
   }, [toast]);
 
-  // Load Settings
   const loadSettingsData = useCallback(async () => {
     try {
-      const res = await fetchSystemSettings();
-      setSettings(res);
-    } catch (err: any) {
-      console.error("Failed to load settings:", err);
-      setError(err?.message || "Failed to load system settings.");
+      setSettings(await fetchSystemSettings());
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, "Failed to load system settings."));
     }
   }, []);
 
-  // Load Templates
   const loadTemplatesData = useCallback(async () => {
     try {
-      const res = await fetchNotificationTemplates();
-      setTemplates(res.items);
-    } catch (err: any) {
-      console.error("Failed to load templates:", err);
+      setTemplates((await fetchNotificationTemplates()).items);
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, "Failed to load notification templates."));
     }
   }, []);
 
-  // Load Notifications
   const loadNotificationsData = useCallback(async () => {
     try {
-      const res = await fetchSystemNotifications({
+      setNotificationsData(await fetchSystemNotifications({
         page: notifPage,
         pageSize: 15,
         type: notifType !== "ALL" ? notifType : undefined,
         search: notifSearch || undefined,
-      });
-      setNotificationsData(res);
-    } catch (err: any) {
-      console.error("Failed to load notifications:", err);
+      }));
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, "Failed to load notifications."));
     }
   }, [notifPage, notifType, notifSearch]);
 
-  // Load Audit Logs
   const loadAuditLogsData = useCallback(async () => {
     try {
-      const res = await fetchAuditLogs({
+      setLogsData(await fetchAuditLogs({
         page: auditPage,
         pageSize: 15,
         action: auditAction !== "ALL" ? auditAction : undefined,
         search: auditSearch || undefined,
-      });
-      setLogsData(res);
-    } catch (err: any) {
-      console.error("Failed to load audit logs:", err);
+      }));
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, "Failed to load audit logs."));
     }
   }, [auditPage, auditAction, auditSearch]);
 
-  // Initial Load
   useEffect(() => {
-    async function init() {
+    const load = async () => {
       setLoading(true);
-      await Promise.allSettled([
-        loadSettingsData(),
-        loadTemplatesData(),
-        loadNotificationsData(),
-        loadAuditLogsData(),
-      ]);
+      const requests: Promise<void>[] = [];
+      if (activeTab === "widget") {
+        setLoading(false);
+        return;
+      }
+      if (["ai_assistant", "languages", "reminders", "lead_assignment"].includes(activeTab)) requests.push(loadSettingsData());
+      if (activeTab === "templates") requests.push(loadTemplatesData());
+      if (activeTab === "notifications") requests.push(loadNotificationsData());
+      if (activeTab === "audit_logs") requests.push(loadAuditLogsData());
+      await Promise.allSettled(requests);
       setLoading(false);
-    }
-    init();
-  }, [loadSettingsData, loadTemplatesData, loadNotificationsData, loadAuditLogsData]);
+    };
+    void load();
+  }, [activeTab, loadSettingsData, loadTemplatesData, loadNotificationsData, loadAuditLogsData]);
 
-  // Tab change refreshes relevant tab data
-  useEffect(() => {
-    if (activeTab === "notifications") {
-      loadNotificationsData();
-    } else if (activeTab === "audit_logs") {
-      loadAuditLogsData();
-    } else if (activeTab === "templates") {
-      loadTemplatesData();
-    }
-  }, [activeTab, loadNotificationsData, loadAuditLogsData, loadTemplatesData]);
-
-  // Handlers
-  const handleUpdateReminders = async (payload: UpdateReminderSettingsPayload) => {
+  const save = async (operation: () => Promise<void>) => {
     setIsSaving(true);
+    setError(null);
     try {
-      const updated = await updateReminderSettings(payload);
-      setSettings((prev) => (prev ? { ...prev, reminders: updated } : null));
-      setToast("Site visit reminder configuration updated successfully.");
-      loadAuditLogsData();
-    } catch (err: any) {
-      alert(err?.message || "Failed to save reminder settings.");
+      await operation();
+      void loadAuditLogsData();
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, "Your settings could not be saved."));
     } finally {
       setIsSaving(false);
     }
   };
 
+  const handleUpdateReminders = (payload: UpdateReminderSettingsPayload) => save(async () => {
+    const updated = await updateReminderSettings(payload);
+    setSettings((current) => current ? { ...current, reminders: updated } : current);
+    setToast("Site visit reminder configuration updated successfully.");
+  });
+
   const handleTriggerReminders = async () => {
     setIsTriggering(true);
     try {
-      const res = await triggerRemindersScan();
-      setToast(`Reminder scan complete. Dispatched ${res.dispatched_count} notifications.`);
-      loadSettingsData();
-      loadNotificationsData();
-      loadAuditLogsData();
-    } catch (err: any) {
-      alert(err?.message || "Failed to trigger reminders scan.");
+      const result = await triggerRemindersScan();
+      setToast(`Reminder scan complete. Dispatched ${result.dispatched_count} notifications.`);
+      await loadSettingsData();
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, "Failed to trigger reminders scan."));
     } finally {
       setIsTriggering(false);
     }
   };
 
-  const handleUpdateAI = async (payload: UpdateAIAssistantSettingsPayload) => {
-    setIsSaving(true);
-    try {
-      const updated = await updateAIAssistantSettings(payload);
-      setSettings((prev) => (prev ? { ...prev, ai_assistant: updated } : null));
-      setToast("AI Assistant grounding and generation settings updated.");
-      loadAuditLogsData();
-    } catch (err: any) {
-      alert(err?.message || "Failed to update AI settings.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const handleUpdateAI = (payload: UpdateAIAssistantSettingsPayload) => save(async () => {
+    const updated = await updateAIAssistantSettings(payload);
+    setSettings((current) => current ? { ...current, ai_assistant: updated } : current);
+    setToast("AI Assistant grounding and generation settings updated.");
+  });
 
-  const handleUpdateLanguages = async (payload: UpdateLanguageSettingsPayload) => {
-    setIsSaving(true);
-    try {
-      const updated = await updateLanguageSettings(payload);
-      setSettings((prev) => (prev ? { ...prev, languages: updated } : null));
-      setToast("Multilingual support languages updated successfully.");
-      loadAuditLogsData();
-    } catch (err: any) {
-      alert(err?.message || "Failed to update language settings.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const handleUpdateLanguages = (payload: UpdateLanguageSettingsPayload) => save(async () => {
+    const updated = await updateLanguageSettings(payload);
+    setSettings((current) => current ? { ...current, languages: updated } : current);
+    setToast("Multilingual support languages updated successfully.");
+  });
 
-  const handleUpdateLeadAssignment = async (payload: UpdateLeadAssignmentSettingsPayload) => {
-    setIsSaving(true);
-    try {
-      const updated = await updateLeadAssignmentSettings(payload);
-      setSettings((prev) => (prev ? { ...prev, lead_assignment: updated } : null));
-      setToast("Lead routing and assignment strategy updated.");
-      loadAuditLogsData();
-    } catch (err: any) {
-      alert(err?.message || "Failed to update lead assignment rules.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const handleUpdateLeadAssignment = (payload: UpdateLeadAssignmentSettingsPayload) => save(async () => {
+    const updated = await updateLeadAssignmentSettings(payload);
+    setSettings((current) => current ? { ...current, lead_assignment: updated } : current);
+    setToast("Lead routing and assignment strategy updated.");
+  });
 
-  const handleUpdateTemplate = async (templateId: string, payload: UpdateNotificationTemplatePayload) => {
-    setIsSaving(true);
-    try {
-      await updateNotificationTemplate(templateId, payload);
-      setToast("Notification template updated successfully.");
-      loadTemplatesData();
-      loadAuditLogsData();
-    } catch (err: any) {
-      alert(err?.message || "Failed to update template.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const handleUpdateTemplate = (templateId: string, payload: UpdateNotificationTemplatePayload) => save(async () => {
+    await updateNotificationTemplate(templateId, payload);
+    await loadTemplatesData();
+    setToast("Notification template updated successfully.");
+  });
 
-  const handleResetTemplate = async (templateId: string) => {
-    setIsSaving(true);
-    try {
-      await resetNotificationTemplate(templateId);
-      setToast("Notification template restored to system default wording.");
-      loadTemplatesData();
-      loadAuditLogsData();
-    } catch (err: any) {
-      alert(err?.message || "Failed to reset template.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const handleResetTemplate = (templateId: string) => save(async () => {
+    await resetNotificationTemplate(templateId);
+    await loadTemplatesData();
+    setToast("Notification template restored to system default wording.");
+  });
 
   const handleBroadcast = async (payload: BroadcastNotificationPayload) => {
     setIsBroadcasting(true);
+    setError(null);
     try {
-      const res = await broadcastSystemNotification(payload);
-      setToast(res.message);
-      loadNotificationsData();
-      loadAuditLogsData();
+      setToast((await broadcastSystemNotification(payload)).message);
+      await loadNotificationsData();
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, "The notification could not be broadcast."));
     } finally {
       setIsBroadcasting(false);
     }
@@ -324,193 +289,44 @@ export function SystemSettingsPage({ initialTab }: SystemSettingsPageProps = {})
     setIsSaving(true);
     try {
       const slug = resolveTenantSlug();
-      const updated = normalizeBranding(
-        await updateTenantBranding(payload),
-        undefined,
-        slug,
-      );
+      const updated = normalizeBranding(await updateTenantBranding(payload), undefined, slug);
       queryClient.setQueryData(publicBrandingQueryKey(slug), updated);
       queryClient.setQueryData(["tenant", "settings", slug], updated);
       setToast("Tenant branding settings updated successfully.");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to update tenant branding.");
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, "Failed to update tenant branding."));
     } finally {
       setIsSaving(false);
     }
   };
 
-  const tabs: { id: SettingsTab; label: string; icon: any }[] = [
-    { id: "branding", label: "Branding", icon: Settings },
-    { id: "reminders", label: "Reminders & Alerts", icon: Bell },
-    { id: "notifications", label: "System Notifications", icon: Megaphone },
-    { id: "templates", label: "Notification Templates", icon: FileText },
-    { id: "messaging", label: "Messaging", icon: MessageSquare },
-    { id: "ai_assistant", label: "AI & Languages", icon: Bot },
-    { id: "lead_assignment", label: "Lead Routing", icon: Scale },
-    { id: "audit_logs", label: "Audit Trail", icon: Shield },
-  ];
-
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
-      {/* Toast Alert */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-charcoal px-4 py-3 text-xs font-semibold text-white shadow-xl animate-in fade-in slide-in-from-bottom-3 duration-200">
-          <CheckCircle2 className="size-4 text-emerald-400" />
-          <span>{toast}</span>
-        </div>
-      )}
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+      {toast && <div role="status" className="fixed right-6 bottom-20 z-50 flex items-center gap-2 rounded-xl bg-charcoal px-4 py-3 text-xs font-semibold text-white shadow-xl lg:bottom-6"><CheckCircle2 aria-hidden="true" className="size-4 text-emerald-400" /><span>{toast}</span></div>}
+      <header><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-charcoal text-ivory"><Settings aria-hidden="true" className="size-4" /></span><h1 className="text-2xl font-semibold tracking-tight text-charcoal sm:text-3xl">Workspace Settings</h1></div><p className="mt-2 max-w-3xl text-sm leading-6 text-charcoal/60">Manage branding, customer engagement, team routing and website channels from one place.</p></header>
+      {error && <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800"><AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-red-600" /><span>{error}</span></div>}
 
-      {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-xl bg-charcoal text-white">
-              <Settings className="size-4" />
-            </div>
-            <h1 className="font-sans font-semibold tracking-tight text-2xl font-bold tracking-tight text-charcoal sm:text-3xl">
-              Notifications & System Settings
-            </h1>
-          </div>
-          <p className="mt-1 text-xs text-charcoal/60 sm:text-sm">
-            Configure site-visit reminders, notification templates, outbound messaging, AI guardrails, lead routing rules, and audit logs
-          </p>
-        </div>
-      </div>
-
-      {/* Error Alert */}
-      {error && (
-        <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
-          <AlertCircle className="size-4 text-red-600 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* Navigation Tabs */}
-      <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-charcoal/10 bg-charcoal/5 p-1.5 text-xs font-semibold">
-        {tabs.map((t) => {
-          const Icon = t.icon;
-          const isActive = activeTab === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setActiveTab(t.id)}
-              className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 transition-all ${
-                isActive
-                  ? "bg-white text-charcoal shadow-xs"
-                  : "text-charcoal/60 hover:text-charcoal"
-              }`}
-            >
-              <Icon className="size-3.5" />
-              <span>{t.label}</span>
-            </button>
-          );
+      <nav aria-label="Settings sections" className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-charcoal/10 bg-charcoal/5 p-1.5 text-xs font-semibold">
+        {SETTINGS_TABS.filter((tab) => !tab.feature || enabled(tab.feature)).map((tab) => {
+          const Icon = tab.icon;
+          return <NavLink key={tab.id} to={tab.to} end className={activeTab === tab.id ? "inline-flex items-center gap-2 rounded-xl bg-white px-3.5 py-2 text-charcoal shadow-xs" : "inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-charcoal/60 transition-colors hover:bg-white/60 hover:text-charcoal"}><Icon aria-hidden="true" className="size-3.5" /><span>{tab.label}</span></NavLink>;
         })}
-      </div>
+      </nav>
 
-      {/* Tab Panels */}
       {loading ? (
-        <div className="flex h-64 w-full items-center justify-center">
-          <div className="flex flex-col items-center gap-2">
-            <div className="size-8 animate-spin rounded-full border-2 border-charcoal/20 border-t-charcoal" />
-            <span className="text-xs text-charcoal/50">Loading settings and configuration...</span>
-          </div>
-        </div>
+        <div role="status" className="flex h-56 w-full items-center justify-center gap-2 text-xs text-charcoal/50"><LoaderCircle aria-hidden="true" className="size-5 animate-spin" />Loading settings…</div>
       ) : (
         <div>
-          {activeTab === "branding" && (
-            <BrandingSettingsTab isSaving={isSaving} onUpdate={handleUpdateBranding} />
-          )}
-
-          {activeTab === "reminders" && settings && (
-            <RemindersConfigTab
-              settings={settings.reminders}
-              onUpdate={handleUpdateReminders}
-              onTriggerScan={handleTriggerReminders}
-              isSaving={isSaving}
-              isTriggering={isTriggering}
-            />
-          )}
-
-          {activeTab === "notifications" && (
-            <SystemNotificationsTab
-              notificationsData={notificationsData}
-              loading={false}
-              page={notifPage}
-              onPageChange={setNotifPage}
-              typeFilter={notifType}
-              onTypeFilterChange={(val) => {
-                setNotifType(val);
-                setNotifPage(1);
-              }}
-              search={notifSearch}
-              onSearchChange={(val) => {
-                setNotifSearch(val);
-                setNotifPage(1);
-              }}
-              onBroadcast={handleBroadcast}
-              isBroadcasting={isBroadcasting}
-            />
-          )}
-
-          {activeTab === "templates" && (
-            <NotificationTemplatesTab
-              templates={templates}
-              loading={false}
-              onUpdateTemplate={handleUpdateTemplate}
-              onResetTemplate={handleResetTemplate}
-              isSaving={isSaving}
-            />
-          )}
-
-          {activeTab === "messaging" && (
-            <Suspense
-              fallback={
-                <div className="flex h-56 items-center justify-center gap-2 text-xs text-charcoal/50">
-                  <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
-                  Loading messaging configuration...
-                </div>
-              }
-            >
-              <MessagingTab />
-            </Suspense>
-          )}
-
-          {activeTab === "ai_assistant" && settings && (            <AIAssistantSettingsTab
-              aiSettings={settings.ai_assistant}
-              langSettings={settings.languages}
-              onUpdateAI={handleUpdateAI}
-              onUpdateLanguages={handleUpdateLanguages}
-              isSaving={isSaving}
-            />
-          )}
-
-          {activeTab === "lead_assignment" && settings && (
-            <LeadAssignmentTab
-              settings={settings.lead_assignment}
-              onUpdate={handleUpdateLeadAssignment}
-              isSaving={isSaving}
-            />
-          )}
-
-          {activeTab === "audit_logs" && (
-            <AuditLogsTab
-              logsData={logsData}
-              loading={false}
-              page={auditPage}
-              onPageChange={setAuditPage}
-              actionFilter={auditAction}
-              onActionFilterChange={(val) => {
-                setAuditAction(val);
-                setAuditPage(1);
-              }}
-              search={auditSearch}
-              onSearchChange={(val) => {
-                setAuditSearch(val);
-                setAuditPage(1);
-              }}
-            />
-          )}
+          {activeTab === "branding" && <BrandingSettingsTab isSaving={isSaving} onUpdate={handleUpdateBranding} />}
+          {activeTab === "widget" && <WebsiteWidgetInstaller />}
+          {activeTab === "reminders" && settings && <RemindersConfigTab settings={settings.reminders} onUpdate={handleUpdateReminders} onTriggerScan={handleTriggerReminders} isSaving={isSaving} isTriggering={isTriggering} />}
+          {activeTab === "ai_assistant" && settings && <AIAssistantSettingsTab aiSettings={settings.ai_assistant} onUpdateAI={handleUpdateAI} isSaving={isSaving} />}
+          {activeTab === "languages" && settings && <LanguageSettingsPanel langSettings={settings.languages} onUpdateLanguages={handleUpdateLanguages} isSaving={isSaving} />}
+          {activeTab === "lead_assignment" && settings && <LeadAssignmentTab settings={settings.lead_assignment} onUpdate={handleUpdateLeadAssignment} isSaving={isSaving} />}
+          {activeTab === "messaging" && <Suspense fallback={<div className="flex h-56 items-center justify-center gap-2 text-xs text-charcoal/50"><LoaderCircle aria-hidden="true" className="size-4 animate-spin" />Loading messaging configuration…</div>}><MessagingTab /></Suspense>}
+          {activeTab === "notifications" && <SystemNotificationsTab notificationsData={notificationsData} loading={false} page={notifPage} onPageChange={setNotifPage} typeFilter={notifType} onTypeFilterChange={(value) => { setNotifType(value); setNotifPage(1); }} search={notifSearch} onSearchChange={(value) => { setNotifSearch(value); setNotifPage(1); }} onBroadcast={handleBroadcast} isBroadcasting={isBroadcasting} />}
+          {activeTab === "templates" && <NotificationTemplatesTab templates={templates} loading={false} onUpdateTemplate={handleUpdateTemplate} onResetTemplate={handleResetTemplate} isSaving={isSaving} />}
+          {activeTab === "audit_logs" && <AuditLogsTab logsData={logsData} loading={false} page={auditPage} onPageChange={setAuditPage} actionFilter={auditAction} onActionFilterChange={(value) => { setAuditAction(value); setAuditPage(1); }} search={auditSearch} onSearchChange={(value) => { setAuditSearch(value); setAuditPage(1); }} />}
         </div>
       )}
     </div>

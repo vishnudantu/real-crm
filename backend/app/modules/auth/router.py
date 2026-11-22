@@ -12,6 +12,7 @@ from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.modules.auth.dependencies import CurrentUser
 from app.modules.auth.schemas import (
+    ChangePasswordRequest,
     LoginRequest,
     LogoutResponse,
     RefreshTokenRequest,
@@ -24,6 +25,7 @@ from app.modules.auth.schemas import (
     TokenResponse,
 )
 from app.modules.auth.service import (
+    change_password,
     cleanup_expired_revocations,
     login_user,
     refresh_access_token,
@@ -140,6 +142,26 @@ def reset_password_confirm_endpoint(
         token=payload.token,
         new_password=payload.password.get_secret_value(),
         settings=settings,
+    )
+
+
+@router.post(
+    "/change-password",
+    response_model=LogoutResponse,
+    summary="Change the authenticated user's password",
+)
+def change_password_endpoint(
+    payload: ChangePasswordRequest,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> LogoutResponse:
+    """Verify the current password and invalidate all existing sessions."""
+
+    return change_password(
+        db,
+        user=current_user,
+        current_password=payload.current_password.get_secret_value(),
+        new_password=payload.new_password.get_secret_value(),
     )
 
 

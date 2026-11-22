@@ -35,6 +35,7 @@ from app.modules.auth.security import (
     verify_token,
 )
 from app.modules.auth.schemas import (
+    LogoutResponse,
     RefreshTokenResponse,
     ResetPasswordResponse,
     RevokeAllResponse,
@@ -303,6 +304,29 @@ def confirm_password_reset(
 
     return ResetPasswordResponse(
         message="Your password has been reset. Please sign in again."
+    )
+
+
+def change_password(
+    session: Session,
+    *,
+    user: User,
+    current_password: str,
+    new_password: str,
+) -> LogoutResponse:
+    """Verify the current password, replace it, and revoke existing sessions."""
+
+    if not verify_password(current_password, user.password_hash):
+        raise InvalidCredentialsError()
+
+    validate_password_strength(new_password)
+    user.password_hash = hash_password(new_password)
+    user.security_version += 1
+    session.add(user)
+    revoke_all_user_refresh_tokens(session, user_id=user.id)
+    cleanup_expired_revocations(session)
+    return LogoutResponse(
+        message="Password changed successfully. Please sign in again."
     )
 
 

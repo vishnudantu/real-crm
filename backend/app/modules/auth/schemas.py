@@ -160,6 +160,28 @@ class LogoutRequest(BaseModel):
     refresh_token: str | None = Field(default=None, min_length=1)
 
 
+class ChangePasswordRequest(BaseModel):
+    """Authenticated password change with current-password verification."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: SecretStr = Field(min_length=1, max_length=128)
+    new_password: SecretStr
+    confirm_password: SecretStr
+
+    @field_validator("new_password")
+    @classmethod
+    def _validate_new_password(cls, value: SecretStr) -> SecretStr:
+        validate_password_strength(value.get_secret_value())
+        return value
+
+    @model_validator(mode="after")
+    def _passwords_match(self) -> "ChangePasswordRequest":
+        if self.new_password.get_secret_value() != self.confirm_password.get_secret_value():
+            raise ValueError("Passwords do not match.")
+        return self
+
+
 class LogoutResponse(BaseModel):
     """Confirmation that the current session was revoked."""
 

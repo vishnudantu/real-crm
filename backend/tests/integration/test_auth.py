@@ -238,6 +238,88 @@ def test_password_reset_requires_single_use_token_and_revokes_sessions(
     assert client.post(LOGIN_URL, json=_login_payload(user.email, "New-Secure-123!")).status_code == 200
 
 
+def test_change_password_verifies_current_password_and_revokes_all_sessions(
+    client: TestClient,
+    override_db: None,
+    seeded_roles: None,
+    user_factory: Callable[..., User],
+) -> None:
+    user = user_factory(email="change-password@example.com")
+    token = client.post(LOGIN_URL, json=_login_payload(user.email)).json()
+    headers = {"Authorization": f"Bearer {token['access_token']}"}
+    new_password = "Another-Secure-123!"
+
+    wrong_password = client.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": WRONG_PASSWORD,
+            "new_password": new_password,
+            "confirm_password": new_password,
+        },
+        headers=headers,
+    )
+    assert wrong_password.status_code == 401
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+
+    response = client.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": VALID_PASSWORD,
+            "new_password": new_password,
+            "confirm_password": new_password,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "message": "Password changed successfully. Please sign in again."
+    }
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 401
+    assert client.post(
+        LOGIN_URL, json=_login_payload(user.email, VALID_PASSWORD)
+    ).status_code == 401
+    assert client.post(
+        LOGIN_URL, json=_login_payload(user.email, new_password)
+    ).status_code == 200
+
+
+def test_change_password_requires_matching_confirmation_and_valid_token(
+    client: TestClient,
+    override_db: None,
+    seeded_roles: None,
+    user_factory: Callable[..., User],
+) -> None:
+    user = user_factory(email="password-confirmation@example.com")
+    headers = auth_headers_for(client, user.email)
+
+    mismatch = client.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": VALID_PASSWORD,
+            "new_password": "New-Secure-123!",
+            "confirm_password": "Different-Secure-123!",
+        },
+        headers=headers,
+    )
+    assert mismatch.status_code == 422
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+
+    unauthenticated = client.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": VALID_PASSWORD,
+            "new_password": "New-Secure-123!",
+            "confirm_password": "New-Secure-123!",
+        },
+    )
+    assert unauthenticated.status_code == 401
+
+
+def auth_headers_for(client: TestClient, email: str) -> dict[str, str]:
+    token = client.post(LOGIN_URL, json=_login_payload(email)).json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_logout_revokes_current_access_token(
     client: TestClient,
     override_db: None,
