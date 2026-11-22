@@ -1,4 +1,7 @@
-import type { PlanFeatureInput } from "./operatorModel";
+import type { PlanFeatureInput } from "./operatorModel.ts";
+import { humanizeIdentifier } from "./operatorModel.ts";
+
+export { humanizeIdentifier };
 
 export function paiseToRupeesInput(paise: number): string {
   const rupees = paise / 100;
@@ -42,13 +45,6 @@ export function featureRecordToRows(
           ? JSON.stringify(value)
           : String(value),
   }));
-}
-
-export function humanizeIdentifier(value: string): string {
-  return value
-    .replace(/[._-]+/g, " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export function formatDateTime(value: string | null): string {

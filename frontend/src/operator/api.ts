@@ -2,8 +2,13 @@ import { API_BASE_URL, ApiError } from "../auth/api";
 import { bearerRequest } from "../shared/apiRequest";
 import { clearOperatorSession, getOperatorSession } from "./session";
 import type {
+  AuditLogFilters,
   CreateOperatorPayload,
   CreatePlanPayload,
+  FeatureCatalogEntry,
+  ImpersonationResult,
+  OnboardTenantPayload,
+  OnboardTenantResponse,
   OperatorAuditLog,
   OperatorPlan,
   OperatorTenant,
@@ -12,8 +17,13 @@ import type {
   OperatorUser,
   ProvisionTenantPayload,
   ProvisionTenantResponse,
+  TenantConfig,
+  TenantConfigPatchPayload,
   TenantDeploymentPayload,
   TenantDeploymentResponse,
+  TenantFeatureEntry,
+  TenantHealth,
+  TenantUsage,
   TenantStatus,
   UpdateOperatorPayload,
   UpdatePlanPayload,
@@ -159,6 +169,111 @@ export function requestTenantDeployment(
   );
 }
 
-export function fetchOperatorAuditLogs(): Promise<OperatorAuditLog[]> {
-  return bearerRequest<OperatorAuditLog[]>("/operator/audit-logs", SESSION);
+export function fetchOperatorAuditLogs(
+  filters: AuditLogFilters = {},
+): Promise<OperatorAuditLog[]> {
+  const query = new URLSearchParams();
+  if (filters.action) query.set("action", filters.action);
+  if (filters.resource_type) query.set("resource_type", filters.resource_type);
+  if (filters.actor_email) query.set("actor_email", filters.actor_email);
+  if (filters.tenant_slug) query.set("tenant_slug", filters.tenant_slug);
+  if (filters.limit) query.set("limit", String(filters.limit));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return bearerRequest<OperatorAuditLog[]>(`/operator/audit-logs${suffix}`, SESSION);
+}
+
+export function fetchFeatureCatalog(): Promise<FeatureCatalogEntry[]> {
+  return bearerRequest<FeatureCatalogEntry[]>("/operator/features/catalog", SESSION);
+}
+
+export function fetchTenantFeatures(
+  tenantId: string,
+): Promise<TenantFeatureEntry[]> {
+  return bearerRequest<TenantFeatureEntry[]>(
+    `/operator/tenants/${tenantId}/features`,
+    SESSION,
+  );
+}
+
+export function setTenantFeature(
+  tenantId: string,
+  feature: string,
+  payload: { enabled: boolean; reason?: string | null },
+): Promise<{ feature: string; tenant_id: string; enabled: boolean; source: string }> {
+  return bearerRequest<{
+    feature: string;
+    tenant_id: string;
+    enabled: boolean;
+    source: string;
+  }>(`/operator/tenants/${tenantId}/features/${feature}`, SESSION, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function bulkUpdateTenantFeatures(
+  tenantId: string,
+  features: Record<string, boolean>,
+): Promise<TenantFeatureEntry[]> {
+  return bearerRequest<TenantFeatureEntry[]>(
+    `/operator/tenants/${tenantId}/features`,
+    SESSION,
+    { method: "PUT", body: JSON.stringify({ features }) },
+  );
+}
+
+export function resetTenantFeatureOverride(
+  tenantId: string,
+  feature: string,
+): Promise<{ feature: string; tenant_id: string; source: string }> {
+  return bearerRequest<{ feature: string; tenant_id: string; source: string }>(
+    `/operator/tenants/${tenantId}/features/${feature}`,
+    SESSION,
+    { method: "DELETE" },
+  );
+}
+
+export function fetchTenantConfig(tenantId: string): Promise<TenantConfig> {
+  return bearerRequest<TenantConfig>(`/operator/tenants/${tenantId}/config`, SESSION);
+}
+
+export function patchTenantConfig(
+  tenantId: string,
+  payload: TenantConfigPatchPayload,
+): Promise<TenantConfig> {
+  return bearerRequest<TenantConfig>(`/operator/tenants/${tenantId}/config`, SESSION, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchTenantUsage(
+  tenantId: string,
+  days: number,
+): Promise<TenantUsage> {
+  return bearerRequest<TenantUsage>(
+    `/operator/tenants/${tenantId}/usage?days=${days}`,
+    SESSION,
+  );
+}
+
+export function fetchTenantHealth(tenantId: string): Promise<TenantHealth> {
+  return bearerRequest<TenantHealth>(`/operator/tenants/${tenantId}/health`, SESSION);
+}
+
+export function impersonateTenant(tenantId: string): Promise<ImpersonationResult> {
+  return bearerRequest<ImpersonationResult>(
+    `/operator/tenants/${tenantId}/impersonate`,
+    SESSION,
+    { method: "POST" },
+  );
+}
+
+export function onboardTenant(
+  payload: OnboardTenantPayload,
+): Promise<OnboardTenantResponse> {
+  return bearerRequest<OnboardTenantResponse>("/operator/tenants/onboard", SESSION, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }

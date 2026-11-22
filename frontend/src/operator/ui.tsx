@@ -1,6 +1,14 @@
+import { useState } from "react";
 import type { ReactNode } from "react";
-import { AlertTriangle, LoaderCircle, RotateCw } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  LoaderCircle,
+  RotateCw,
+} from "lucide-react";
 import { useModalFocus } from "../shared/useModalFocus";
+import type { HealthState } from "./operatorModel";
 
 export const inputClasses =
   "mt-1.5 block w-full rounded-xl border border-charcoal/15 bg-white px-3.5 py-2.5 text-sm text-charcoal placeholder:text-charcoal/40 transition-colors focus:border-forest focus:ring-4 focus:ring-forest/10 focus:outline-hidden disabled:cursor-not-allowed disabled:bg-charcoal/5";
@@ -193,5 +201,148 @@ export function InlineNotice({
     >
       {children}
     </p>
+  );
+}
+
+const HEALTH_CHIP_TONES: Record<HealthState, string> = {
+  green: "border-forest/25 bg-forest/10 text-forest-deep",
+  yellow: "border-amber-400/40 bg-amber-50 text-amber-800",
+  red: "border-clay/30 bg-clay-soft text-clay",
+};
+
+const HEALTH_DOT_TONES: Record<HealthState, string> = {
+  green: "bg-forest",
+  yellow: "bg-amber-500",
+  red: "bg-clay",
+};
+
+export function healthStateOf(state: string): HealthState {
+  return state === "red" ? "red" : state === "green" ? "green" : "yellow";
+}
+
+interface HealthChipProps {
+  state: string;
+  label?: string;
+  title?: string;
+}
+
+export function HealthChip({ state, label, title }: HealthChipProps) {
+  const tone = healthStateOf(state);
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.62rem] font-semibold tracking-wider uppercase ${HEALTH_CHIP_TONES[tone]}`}
+    >
+      <span aria-hidden="true" className={`size-1.5 rounded-full ${HEALTH_DOT_TONES[tone]}`} />
+      {label ?? tone}
+    </span>
+  );
+}
+
+interface CopyButtonProps {
+  value: string;
+  label?: string;
+  className?: string;
+}
+
+export function CopyButton({ value, label = "Copy", className = "" }: CopyButtonProps) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      // Clipboard can be blocked; the value remains visible for manual copy.
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      aria-label={`Copy ${label.toLowerCase()}`}
+      className={
+        className ||
+        "inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-charcoal/15 bg-white px-2.5 text-[0.68rem] font-semibold text-charcoal/70 transition-colors hover:bg-charcoal/5 hover:text-charcoal"
+      }
+    >
+      {copied ? (
+        <Check aria-hidden="true" className="size-3.5 text-forest" />
+      ) : (
+        <Copy aria-hidden="true" className="size-3.5" />
+      )}
+      {copied ? "Copied" : label}
+    </button>
+  );
+}
+
+export interface TabItem {
+  id: string;
+  label: string;
+  icon?: ReactNode;
+}
+
+interface TabBarProps {
+  tabs: TabItem[];
+  active: string;
+  onChange: (id: string) => void;
+  ariaLabel: string;
+}
+
+export function TabBar({ tabs, active, onChange, ariaLabel }: TabBarProps) {
+  return (
+    <div
+      role="tablist"
+      aria-label={ariaLabel}
+      className="flex gap-1 overflow-x-auto rounded-2xl border border-charcoal/10 bg-white p-1.5 shadow-xs"
+    >
+      {tabs.map((tab) => {
+        const isActive = tab.id === active;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onChange(tab.id)}
+            className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold whitespace-nowrap transition-colors ${
+              isActive
+                ? "bg-charcoal text-ivory shadow-xs"
+                : "text-charcoal/60 hover:bg-charcoal/5 hover:text-charcoal"
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+interface MeterBarProps {
+  percent: number | null;
+  tone?: "forest" | "clay" | "amber";
+}
+
+export function MeterBar({ percent, tone = "forest" }: MeterBarProps) {
+  if (percent === null) {
+    return (
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-charcoal/5">
+        <div className="h-full w-full bg-charcoal/10" />
+      </div>
+    );
+  }
+  const resolvedTone =
+    percent >= 95 ? "bg-clay" : percent >= 80 ? "bg-amber-500" : tone === "forest" ? "bg-forest" : "bg-clay";
+  return (
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-charcoal/5">
+      <div
+        className={`h-full rounded-full ${resolvedTone} transition-all`}
+        style={{ width: `${Math.max(2, Math.min(100, percent))}%` }}
+      />
+    </div>
   );
 }
