@@ -45,6 +45,9 @@ playwright-report/
 playwright-report-*/
 test-results/
 
+# Local generated document artifacts (PDFs)
+backend/documents/
+
 # Local agent worktrees, backups, and temporary tooling
 .claude/worktrees/
 .claude/backups/
