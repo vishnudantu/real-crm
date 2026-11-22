@@ -95,6 +95,11 @@ class SaleBooking(TenantOwned, Base):
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     unit_number: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Canonical unit pointer (PF-010). Nullable so legacy free-text rows stay valid.
+    unit_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("property_units.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
     configuration: Mapped[str | None] = mapped_column(String(100), nullable=True)
     carpet_area_sqft: Mapped[int | None] = mapped_column(nullable=True)
     consideration_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
