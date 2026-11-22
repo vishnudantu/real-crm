@@ -90,5 +90,5 @@ TENANT_TABLES = frozenset({
     "property_units", "unit_status_events", "unit_holds",
     "document_templates", "documents", "brokers",
     "team_channels", "team_channel_members", "team_messages", "visit_evidence",
-    "call_transcripts", "call_summaries",
+    "call_transcripts", "call_summaries", "tenant_ai_providers",
 })

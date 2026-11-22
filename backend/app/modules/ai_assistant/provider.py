@@ -114,25 +114,63 @@ class OpenAICompatibleClient:
         choices = data.get("choices") or []
         if not choices:
             raise GroqAPIError("No completion choices returned by provider.")
+        message = choices[0].get("message", {}) or {}
+        raw_tool_calls = message.get("tool_calls") or []
+        # Normalise each tool call to objects (id/type/function.name/arguments)
+        # so the existing Groq-shaped tool loop can consume them unchanged.
+        tool_calls = [
+            SimpleNamespace(
+                id=call.get("id"),
+                type=call.get("type", "function"),
+                function=SimpleNamespace(
+                    name=(call.get("function") or {}).get("name"),
+                    arguments=(call.get("function") or {}).get("arguments", "{}"),
+                ),
+            )
+            for call in raw_tool_calls
+        ]
         return SimpleNamespace(
             choices=[
                 SimpleNamespace(
                     message=SimpleNamespace(
-                        content=choices[0].get("message", {}).get("content"),
-                        tool_calls=choices[0].get("message", {}).get("tool_calls"),
+                        content=message.get("content"),
+                        tool_calls=tool_calls,
                     )
                 )
             ]
         )
 
 
-def resolve_ai_client(settings: Settings | None = None):
-    """Return the configured AI client: tenant override > generic env > Groq env."""
+def resolve_ai_client(settings: Settings | None = None, *, tenant_config: dict | None = None):
+    """Return the configured AI client: tenant override > generic env > Groq env.
+
+    ``tenant_config`` is the decrypted per-tenant dict returned by
+    ``tenant_ai.service.resolve_provider_config`` (provider/base_url/api_key/
+    model). When present it takes precedence over all central settings; when
+    ``None`` the existing environment-based behaviour is preserved unchanged.
+    """
 
     config = settings or get_settings()
 
-    # Tenant/provider override (future: per-tenant settings table). For now the
-    # generic env provider takes precedence when explicitly configured.
+    if tenant_config is not None:
+        provider = (tenant_config.get("provider") or "").strip().lower()
+        api_key = tenant_config.get("api_key")
+        model = tenant_config.get("model") or config.ai_model
+        if provider == "groq":
+            return GroqClient(
+                api_key=api_key,
+                model=model,
+                timeout=config.groq_timeout_seconds,
+                max_retries=config.groq_max_retries,
+            )
+        return OpenAICompatibleClient(
+            api_key=api_key,
+            base_url=tenant_config.get("base_url") or "https://api.openai.com/v1",
+            model=model,
+            timeout=config.groq_timeout_seconds,
+        )
+
+    # No tenant override: honour the generic env provider when configured.
     provider = (config.ai_provider or "").strip().lower()
     if provider and provider != "groq":
         return OpenAICompatibleClient(
