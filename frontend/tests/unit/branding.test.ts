@@ -2,11 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_BRANDING,
+  DEFAULT_TENANT_SLUG,
   accessiblePrimaryColor,
   brandingStyles,
   contrastRatio,
+  isTenantBranded,
   normalizeBranding,
   normalizeTenantSlug,
+  parseTenantOverride,
 } from "../../src/tenant/branding.ts";
 import { profileMatchesTenant } from "../../src/tenant/profile.ts";
 
@@ -95,4 +98,89 @@ test("keeps legacy profiles compatible and rejects only known tenant mismatches"
   assert.equal(profileMatchesTenant("tenant-a", null), true);
   assert.equal(profileMatchesTenant("tenant-a", "tenant-a"), true);
   assert.equal(profileMatchesTenant("tenant-b", "tenant-a"), false);
+});
+
+test("parseTenantOverride: query parameter wins over session and env", () => {
+  assert.equal(
+    parseTenantOverride("?tenant=acme", "stored-tenant", "env-tenant"),
+    "acme",
+  );
+  assert.equal(
+    parseTenantOverride("?tenant=Acme", null, null),
+    "acme",
+    "uppercase query slugs are normalized",
+  );
+});
+
+test("parseTenantOverride: session value wins over env when no query", () => {
+  assert.equal(
+    parseTenantOverride("", "stored-tenant", "env-tenant"),
+    "stored-tenant",
+  );
+  assert.equal(
+    parseTenantOverride(null, "stored-tenant", "env-tenant"),
+    "stored-tenant",
+  );
+});
+
+test("parseTenantOverride: env used when no query or session", () => {
+  assert.equal(parseTenantOverride("", null, "env-tenant"), "env-tenant");
+  assert.equal(parseTenantOverride("", "", "env-tenant"), "env-tenant");
+});
+
+test("parseTenantOverride: returns null when no override is present", () => {
+  assert.equal(parseTenantOverride("", null, null), null);
+  assert.equal(parseTenantOverride("", null, ""), null);
+  assert.equal(parseTenantOverride("", null, DEFAULT_TENANT_SLUG), null);
+});
+
+test("parseTenantOverride: ?tenant=default clears any stored/env override", () => {
+  assert.equal(
+    parseTenantOverride("?tenant=default", "stored-tenant", "env-tenant"),
+    null,
+  );
+  assert.equal(
+    parseTenantOverride("?tenant=DEFAULT", "stored-tenant", "env-tenant"),
+    null,
+    "default is matched case-insensitively after normalization",
+  );
+});
+
+test("parseTenantOverride: invalid slug in query clears override", () => {
+  assert.equal(
+    parseTenantOverride("?tenant=not valid!", "stored-tenant", "env-tenant"),
+    null,
+  );
+  assert.equal(
+    parseTenantOverride("?tenant=", "stored-tenant", "env-tenant"),
+    null,
+  );
+});
+
+test("parseTenantOverride: invalid session and env values are ignored", () => {
+  assert.equal(
+    parseTenantOverride("", "not valid!", "env-tenant"),
+    "env-tenant",
+  );
+  assert.equal(parseTenantOverride("", "bad value", "also bad!"), null);
+});
+
+test("parseTenantOverride: reads tenant param among other query params", () => {
+  assert.equal(
+    parseTenantOverride("?foo=bar&tenant=skyline-dev&baz=1", null, null),
+    "skyline-dev",
+  );
+  assert.equal(
+    parseTenantOverride("?foo=bar", null, "env-tenant"),
+    "env-tenant",
+  );
+});
+
+test("isTenantBranded: true only for real tenant payloads with id", () => {
+  assert.equal(isTenantBranded(DEFAULT_BRANDING), false);
+  assert.equal(
+    isTenantBranded({ ...DEFAULT_BRANDING, id: "tenant-123", brand_name: "Acme" }),
+    true,
+  );
+  assert.equal(isTenantBranded({ ...DEFAULT_BRANDING, brand_name: "Acme" }), false);
 });

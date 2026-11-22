@@ -3,9 +3,11 @@ import { ArrowUp } from "lucide-react";
 import { DEMO_EMAIL, DEMO_MAILTO, footerColumns } from "../content";
 import { Logo } from "./Logo";
 import { useTenant } from "../tenant/TenantProvider";
+import { isTenantBranded } from "../tenant/branding";
 
 export function Footer() {
   const { branding } = useTenant();
+  const tenantBranded = isTenantBranded(branding);
   return (
     <footer className="on-dark bg-charcoal text-ivory">
       <div className="shell">
@@ -94,6 +96,9 @@ export function Footer() {
 
         <div className="flex flex-col gap-4 border-t border-ivory/10 py-6 text-[0.64rem] text-ivory/65 sm:flex-row sm:items-center sm:justify-between">
           <p>&copy; {new Date().getFullYear()} {branding.brand_name}. All rights reserved.</p>
+          {tenantBranded && (
+            <p className="text-ivory/55">Powered by PropFlow</p>
+          )}
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <a
               href="https://unsplash.com"

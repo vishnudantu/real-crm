@@ -5,6 +5,7 @@ import type {
 } from "./types";
 
 export const DEFAULT_TENANT_SLUG = "default";
+export const TENANT_OVERRIDE_STORAGE_KEY = "propflow.tenant-slug";
 
 export const DEFAULT_BRANDING: Readonly<TenantBranding> = Object.freeze({
   id: null,
@@ -29,13 +30,91 @@ export function normalizeTenantSlug(value: unknown): string {
 }
 
 /**
- * VITE_TENANT_SLUG is the deployment-time/default route-to-tenant mapping.
- * For production host/path mappings, have the host configuration inject the
- * same value. Browser storage is deliberately not consulted: tenant selection
- * here is for display only, never authorization or cross-tenant object access.
+ * Pure tenant-override resolver. Returns null when no override is present.
+ * - search: window.location.search, e.g. "?tenant=acme"
+ * - sessionValue: value already stored under propflow.tenant-slug (session-only)
+ * - envValue: VITE_TENANT_SLUG fallback (used only when no query/session override)
+ */
+export function parseTenantOverride(
+  search?: string | null,
+  sessionValue?: string | null,
+  envValue?: string | null,
+): string | null {
+  const queryMatch = typeof search === "string"
+    ? /[?&]tenant=([^&]*)/.exec(search)
+    : null;
+
+  if (queryMatch) {
+    const raw = decodeURIComponent(queryMatch[1]);
+    const normalized = normalizeTenantSlug(raw);
+    // A present-but-default or present-but-invalid query param clears any stored override.
+    if (normalized === DEFAULT_TENANT_SLUG) return null;
+    return normalized;
+  }
+
+  const sessionNormalized = normalizeTenantSlug(sessionValue);
+  if (sessionNormalized !== DEFAULT_TENANT_SLUG) return sessionNormalized;
+
+  const envNormalized = normalizeTenantSlug(envValue);
+  if (envNormalized !== DEFAULT_TENANT_SLUG) return envNormalized;
+
+  return null;
+}
+
+interface SessionStorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+function getSessionStorage(): SessionStorageLike | null {
+  if (typeof window === "undefined" || !window.sessionStorage) return null;
+  return window.sessionStorage;
+}
+
+function persistTenantOverride(slug: string | null): void {
+  const storage = getSessionStorage();
+  if (!storage) return;
+  try {
+    if (slug === null || slug === DEFAULT_TENANT_SLUG) {
+      storage.removeItem(TENANT_OVERRIDE_STORAGE_KEY);
+    } else {
+      storage.setItem(TENANT_OVERRIDE_STORAGE_KEY, slug);
+    }
+  } catch {
+    // Storage may be full or blocked; ignore.
+  }
+}
+
+/**
+ * Resolve tenant slug with priority: ?tenant= override > sessionStorage > env > default.
+ * When ?tenant= is present, persist (or clear for default) the session value.
+ * When configuredSlug is provided (admin/api calls), it takes precedence over browser overrides.
  */
 export function resolveTenantSlug(configuredSlug?: string): string {
-  return normalizeTenantSlug(configuredSlug ?? import.meta.env.VITE_TENANT_SLUG);
+  if (typeof window === "undefined") {
+    return normalizeTenantSlug(configuredSlug ?? import.meta.env.VITE_TENANT_SLUG);
+  }
+
+  if (configuredSlug) {
+    return normalizeTenantSlug(configuredSlug);
+  }
+
+  const override = parseTenantOverride(
+    window.location.search,
+    window.sessionStorage?.getItem(TENANT_OVERRIDE_STORAGE_KEY),
+    import.meta.env.VITE_TENANT_SLUG,
+  );
+
+  persistTenantOverride(override);
+  return override ?? DEFAULT_TENANT_SLUG;
+}
+
+/**
+ * True when branding represents a real tenant (not platform defaults).
+ */
+export function isTenantBranded(branding: TenantBranding): boolean {
+  return Boolean(branding.id);
 }
 
 const brandingFieldsSchema = z.object({
