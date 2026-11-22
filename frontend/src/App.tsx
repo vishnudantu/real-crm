@@ -38,6 +38,7 @@ import { CustomerDuplicatesPage } from "./customers/CustomerDuplicatesPage";
 import { OpportunityPipelinePage } from "./customers/OpportunityPipelinePage";
 import { InventoryMapPage } from "./inventory/InventoryMapPage";
 import { InventoryUnitsPage } from "./inventory/InventoryUnitsPage";
+import { DocumentsPage } from "./documents/DocumentsPage";
 
 const SaleBookingsPage = lazy(() =>
   import("./admin/sales/SaleBookingsPage").then((module) => ({
@@ -354,6 +355,7 @@ export default function App() {
                   </Suspense>
                 }
               />
+              <Route path="documents" element={<DocumentsPage />} />
               <Route path="settings" element={<SystemSettingsPage />} />
               <Route path="settings/:section" element={<SystemSettingsPage />} />
               <Route path="notifications" element={<SystemSettingsPage initialTab="notifications" />} />

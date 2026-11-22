@@ -23,7 +23,7 @@ test("keeps core navigation in stable labeled groups when all optional features 
 
   assert.deepEqual(
     groups.map((group) => group.label),
-    ["Overview", "Engage", "Catalog", "Customers", "Property", "Team", "System"],
+    ["Overview", "Engage", "Catalog", "Customers", "Property", "Team", "Revenue", "System"],
   );
   assert.deepEqual(pathsByGroup({}), [
     ["/admin"],
@@ -32,6 +32,7 @@ test("keeps core navigation in stable labeled groups when all optional features 
     ["/admin/customers", "/admin/opportunities"],
     ["/admin/inventory", "/admin/inventory/units"],
     ["/admin/users"],
+    ["/admin/documents"],
     ["/admin/settings", "/admin/audit-logs", "/admin/account"],
   ]);
 });
@@ -89,7 +90,13 @@ test("returns fresh groups and preserves ordering with every feature enabled", (
   assert.deepEqual(revenue?.items.map((item) => item.to), [
     "/admin/analytics",
     "/admin/sales-bookings",
+    "/admin/documents",
   ]);
+});
+
+test("keeps the Documents library visible regardless of feature flags", () => {
+  assert.ok(pathsByGroup({}).flat().includes("/admin/documents"));
+  assert.ok(pathsByGroup(allFeatures).flat().includes("/admin/documents"));
 });
 
 test("caps mobile quick navigation at five with the most-used destinations", () => {

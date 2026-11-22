@@ -73,6 +73,7 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
     items: [
       { label: "Analytics & Reports", shortLabel: "Analytics", to: "/admin/analytics", feature: "analytics" },
       { label: "Sales Bookings", shortLabel: "Bookings", to: "/admin/sales-bookings", feature: "post_sales" },
+      { label: "Documents", shortLabel: "Documents", to: "/admin/documents" },
     ],
   },
   {
