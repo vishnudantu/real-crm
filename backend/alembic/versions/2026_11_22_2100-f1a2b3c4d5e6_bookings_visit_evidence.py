@@ -1,7 +1,7 @@
 """bookings: staff site-visit evidence artifacts
 
 Revision ID: f1a2b3c4d5e6
-Revises: c5d6e7f8a9b0
+Revises: c4d5e6f7a8b9
 Create Date: 2026-11-22 21:00:00
 
 Staff-uploaded proof of a site visit (photo/pdf metadata + notes) with a
@@ -19,7 +19,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "f1a2b3c4d5e6"
-down_revision: Union[str, None] = "c5d6e7f8a9b0"
+down_revision: Union[str, None] = "c4d5e6f7a8b9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

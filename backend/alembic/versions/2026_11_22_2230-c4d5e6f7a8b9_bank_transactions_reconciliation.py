@@ -1,7 +1,7 @@
 """bank transactions for reconciliation ingestion and match suggestions
 
 Revision ID: c4d5e6f7a8b9
-Revises: c5d6e7f8a9b0
+Revises: e6f7a8b9c0d1
 Create Date: 2026-11-22 22:30:00
 
 """
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "c4d5e6f7a8b9"
-down_revision: Union[str, None] = "c5d6e7f8a9b0"
+down_revision: Union[str, None] = "e6f7a8b9c0d1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

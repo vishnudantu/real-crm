@@ -1,7 +1,7 @@
 """service desk: support tickets with SLA deadlines and comment threads
 
 Revision ID: f7a8b9c0d1e2
-Revises: f1a2b3c4d5e6
+Revises: f8a9b0c1d2e3
 Create Date: 2026-11-22 22:00:00
 
 """
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "f7a8b9c0d1e2"
-down_revision: Union[str, None] = "f1a2b3c4d5e6"
+down_revision: Union[str, None] = "f8a9b0c1d2e3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
