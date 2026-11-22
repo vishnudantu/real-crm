@@ -9,6 +9,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.modules.messaging.consent import evaluate
 from app.modules.messaging.models import DeliveryStatus, MessageDelivery
 from app.modules.messaging.providers.factory import build_provider
 
@@ -82,11 +83,24 @@ def process_due_deliveries(
             .limit(batch_size)
         ).all()
     )
-    counts = {"sent": 0, "retrying": 0, "failed": 0}
+    counts = {"sent": 0, "retrying": 0, "failed": 0, "suppressed": 0}
     for delivery_id in ids:
         if not _claim(session, delivery_id, now=timestamp):
             continue
         delivery = session.get(MessageDelivery, delivery_id)
+        # Dispatch-time lawful-basis gate (P0.4): consent is re-evaluated now,
+        # not when the trigger queued the row. A suppressed row never reaches
+        # the provider and is terminally CANCELLED with an audit reason.
+        decision = evaluate(session, delivery=delivery)
+        if not decision.allowed:
+            delivery.status = DeliveryStatus.CANCELLED.value
+            delivery.suppressed_reason = decision.reason
+            delivery.claimed_at = None
+            delivery.next_attempt_at = timestamp
+            delivery.updated_at = timestamp
+            counts["suppressed"] += 1
+            session.flush()
+            continue
         try:
             factory = provider_factory or build_provider
             provider = factory(delivery.provider, settings)

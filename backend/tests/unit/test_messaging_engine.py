@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.modules.leads.models import Lead, LeadSource, LeadStatus
 from app.modules.messaging.dispatcher import process_due_deliveries
 from app.modules.messaging.engine import emit_event, render_template
 from app.modules.messaging.models import (
@@ -79,6 +80,34 @@ def _rule_and_template(session: Session, tenant_id, *, delay_minutes: int = 0) -
     return rule
 
 
+def _consented_lead(session: Session, tenant_id, *, creator_id, phone: str = "+919800000000") -> Lead:
+    """A real lead with active marketing consent, as intake would create.
+
+    Dispatch-time consent evaluation resolves recipients through lead records;
+    trigger fixtures must reference an actual lead rather than an arbitrary
+    UUID or every external send is (correctly) suppressed.
+    """
+
+    from app.modules.projects.models import Project, ProjectStatus
+
+    project = session.query(Project).filter_by(tenant_id=tenant_id).first()
+    if project is None:
+        project = Project(
+            tenant_id=tenant_id, name="Skyline", slug=f"sky-{uuid4().hex[:8]}",
+            location="Hyderabad", status=ProjectStatus.ACTIVE.value, created_by=creator_id,
+        )
+        session.add(project)
+        session.flush()
+    lead = Lead(
+        tenant_id=tenant_id, full_name="Asha", email=f"asha-{uuid4().hex[:6]}@example.com",
+        phone=phone, project_id=project.id, source=LeadSource.WEBSITE.value,
+        status=LeadStatus.NEW.value, consent_to_contact=True,
+    )
+    session.add(lead)
+    session.flush()
+    return lead
+
+
 def test_emit_event_creates_queued_delivery_and_is_idempotent(
     test_session_factory: sessionmaker[Session],
 ) -> None:
@@ -120,7 +149,7 @@ def test_delayed_delivery_is_not_sent_before_due_time(
     provider = _RecordingProvider()
     with test_session_factory() as session:
         counts = process_due_deliveries(session, now=datetime.now(UTC), provider_factory=lambda name, settings: provider)
-        assert counts == {"sent": 0, "retrying": 0, "failed": 0}
+        assert counts == {"sent": 0, "retrying": 0, "failed": 0, "suppressed": 0}
         assert provider.sent == []
 
 
@@ -128,8 +157,9 @@ def test_dispatcher_sends_and_is_idempotent_after_commit(
     test_session_factory: sessionmaker[Session],
 ) -> None:
     with test_session_factory() as session:
-        tenant, _ = _tenant_and_user(session)
+        tenant, creator = _tenant_and_user(session)
         _rule_and_template(session, tenant.id)
+        _consented_lead(session, tenant.id, creator_id=creator.id)
         emit_event(
             session, tenant_id=tenant.id, event="lead.created",
             context={"entity_type": "lead", "entity_id": uuid4(), "first_name": "Asha", "project_name": "P", "to_address": "+919800000000"},
@@ -153,8 +183,9 @@ def test_provider_failure_retries_then_fails_after_max_attempts(
     test_session_factory: sessionmaker[Session],
 ) -> None:
     with test_session_factory() as session:
-        tenant, _ = _tenant_and_user(session)
+        tenant, creator = _tenant_and_user(session)
         _rule_and_template(session, tenant.id)
+        _consented_lead(session, tenant.id, creator_id=creator.id)
         emit_event(
             session, tenant_id=tenant.id, event="lead.created",
             context={"entity_type": "lead", "entity_id": uuid4(), "first_name": "Asha", "project_name": "P", "to_address": "+919800000000"},
