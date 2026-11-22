@@ -8,6 +8,7 @@ from app.modules.approvals.router import router as approvals_router
 from app.modules.auth.router import router as auth_router
 from app.modules.billing.router import router as billing_router
 from app.modules.bookings.router import bookings_router, slots_router
+from app.modules.buyer_docs.router import router as buyer_docs_router
 from app.modules.brokers.router import router as brokers_router
 from app.modules.connectors.router import router as connectors_router
 from app.modules.conversations.router import router as conversations_router
@@ -53,6 +54,7 @@ api_router.include_router(messages_router)
 api_router.include_router(ai_assistant_router)
 api_router.include_router(slots_router)
 api_router.include_router(bookings_router)
+api_router.include_router(buyer_docs_router)
 api_router.include_router(brokers_router)
 api_router.include_router(follow_ups_router)
 api_router.include_router(handoffs_router)
