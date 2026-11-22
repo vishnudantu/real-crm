@@ -183,6 +183,10 @@ class Settings(BaseSettings):
         default="documents",
         description="Local document artifact directory; relative paths resolve from backend root.",
     )
+    visit_evidence_storage_dir: str = Field(
+        default="visit_evidence",
+        description="Local staff site-visit evidence directory; relative paths resolve from backend root.",
+    )
     razorpay_key_id: SecretStr | None = Field(default=None)
     razorpay_key_secret: SecretStr | None = Field(default=None)
     razorpay_webhook_secret: SecretStr | None = Field(default=None)

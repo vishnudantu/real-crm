@@ -47,6 +47,7 @@ test-results/
 
 # Local generated document artifacts (PDFs)
 backend/documents/
+backend/visit_evidence/
 
 # Local agent worktrees, backups, and temporary tooling
 .claude/worktrees/

@@ -6,7 +6,8 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -22,6 +23,8 @@ from app.modules.bookings.schemas import (
     BookingRescheduleRequest,
     BookingResponse,
     BookingStatusUpdateRequest,
+    VisitEvidenceResponse,
+    VisitEvidenceReviewRequest,
     VisitSlotCreateRequest,
     VisitSlotListResponse,
     VisitSlotResponse,
@@ -35,13 +38,17 @@ from app.modules.bookings.service import (
     get_available_slots,
     get_booking,
     get_booking_metrics_summary,
+    get_evidence_for_download,
     get_slot,
     list_bookings,
     list_slots,
+    list_visit_evidence,
     reschedule_booking,
+    review_visit_evidence,
     schedule_custom_booking,
     update_booking_status,
     update_slot,
+    upload_visit_evidence,
 )
 
 slots_router = APIRouter(prefix="/slots", tags=["slots"])
@@ -317,4 +324,91 @@ def update_booking_status_endpoint(
     return update_booking_status(
         db, actor=current_user, booking_id=booking_id, payload=payload
     )
+
+
+# ---------------------------------------------------------------------------
+# Staff site-visit evidence
+# ---------------------------------------------------------------------------
+
+
+@bookings_router.post(
+    "/{booking_id}/evidence",
+    response_model=VisitEvidenceResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload staff visit evidence (raw image/pdf body + optional notes)",
+)
+async def upload_evidence_endpoint(
+    booking_id: UUID,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    request: Request,
+    notes: str | None = None,
+) -> VisitEvidenceResponse:
+    """Accept the raw artifact as the request body (image/* or application/pdf).
+
+    Raw-body upload avoids a multipart dependency. The Content-Type header
+    declares the artifact type and is validated against the allow-list.
+    """
+    contents = await request.body()
+    evidence = upload_visit_evidence(
+        db,
+        actor=current_user,
+        booking_id=booking_id,
+        contents=contents,
+        content_type=(request.headers.get("content-type") or "application/octet-stream").split(";")[0],
+        notes=notes,
+    )
+    return VisitEvidenceResponse.model_validate(evidence)
+
+
+@bookings_router.get(
+    "/{booking_id}/evidence",
+    response_model=list[VisitEvidenceResponse],
+    summary="List evidence for a booking",
+)
+def list_evidence_endpoint(
+    booking_id: UUID,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[VisitEvidenceResponse]:
+    rows = list_visit_evidence(db, actor=current_user, booking_id=booking_id)
+    return [VisitEvidenceResponse.model_validate(row) for row in rows]
+
+
+@bookings_router.get(
+    "/evidence/{evidence_id}/download",
+    summary="Download an evidence artifact (visibility-checked)",
+)
+def download_evidence_endpoint(
+    evidence_id: UUID,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+):
+    evidence, path = get_evidence_for_download(db, actor=current_user, evidence_id=evidence_id)
+    return FileResponse(
+        path,
+        media_type=evidence.content_type,
+        headers={"X-Content-Sha256": evidence.content_sha256, "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@bookings_router.post(
+    "/evidence/{evidence_id}/review",
+    response_model=VisitEvidenceResponse,
+    summary="Verify or reject a submitted evidence artifact",
+)
+def review_evidence_endpoint(
+    evidence_id: UUID,
+    payload: VisitEvidenceReviewRequest,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> VisitEvidenceResponse:
+    evidence = review_visit_evidence(
+        db,
+        actor=current_user,
+        evidence_id=evidence_id,
+        decision=payload.decision,
+        review_note=payload.review_note,
+    )
+    return VisitEvidenceResponse.model_validate(evidence)
 

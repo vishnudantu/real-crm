@@ -39,6 +39,14 @@ class BookingStatus(StrEnum):
     NO_SHOW = "NO_SHOW"
 
 
+class EvidenceStatus(StrEnum):
+    """Staff-uploaded visit evidence verification lifecycle."""
+
+    SUBMITTED = "SUBMITTED"
+    VERIFIED = "VERIFIED"
+    REJECTED = "REJECTED"
+
+
 ACTIVE_BOOKING_STATUSES: tuple[str, ...] = (
     BookingStatus.PENDING.value,
     BookingStatus.CONFIRMED.value,
@@ -221,4 +229,64 @@ class Booking(TenantOwned, Base):
     buyer: Mapped[User] = relationship(foreign_keys=[buyer_id])
     executive: Mapped[User | None] = relationship(foreign_keys=[executive_id])
     cancelled_by: Mapped[User | None] = relationship(foreign_keys=[cancelled_by_id])
+
+
+class VisitEvidence(TenantOwned, Base):
+    """Staff-uploaded proof that a site visit happened (photo/document + notes).
+
+    Metadata is stored here; binary content lives in local disk storage rooted at
+    VISIT_EVIDENCE_STORAGE_DIR with a per-tenant subfolder. ``content_sha256`` and
+    the relative ``storage_path`` give an integrity check without exposing
+    absolute paths through the API. Verification is a separate staff action.
+    """
+
+    __tablename__ = "visit_evidence"
+    __table_args__ = (
+        CheckConstraint(
+            f"status IN ({_quoted_values(EvidenceStatus)})",
+            name="ck_visit_evidence_status",
+        ),
+        CheckConstraint(
+            "length(content_sha256) = 64", name="ck_visit_evidence_sha256"
+        ),
+        CheckConstraint("size_bytes >= 0", name="ck_visit_evidence_size_non_negative"),
+        Index("ix_visit_evidence_booking", "booking_id"),
+        Index("ix_visit_evidence_tenant_status", "tenant_id", "status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid4
+    )
+    booking_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("bookings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=EvidenceStatus.SUBMITTED.value,
+        server_default=EvidenceStatus.SUBMITTED.value,
+    )
+    uploaded_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    verified_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now(),
+        onupdate=utcnow,
+    )
+
+    booking: Mapped[Booking] = relationship(foreign_keys=[booking_id])
 

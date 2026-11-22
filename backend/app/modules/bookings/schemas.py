@@ -198,6 +198,34 @@ class BookingStatusUpdateRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=1000)
 
 
+class VisitEvidenceResponse(BaseModel):
+    """Evidence metadata returned to staff; never includes absolute storage paths."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    booking_id: UUID
+    content_type: str
+    size_bytes: int
+    content_sha256: str
+    notes: str | None = None
+    status: str
+    uploaded_by_id: UUID | None = None
+    verified_by_id: UUID | None = None
+    verified_at: datetime | None = None
+    review_note: str | None = None
+    created_at: datetime
+
+
+class VisitEvidenceReviewRequest(BaseModel):
+    """Verify or reject a submitted evidence artifact."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    decision: str = Field(pattern="^(VERIFIED|REJECTED)$")
+    review_note: str | None = Field(default=None, max_length=2000)
+
+
 class BookingMetricsResponse(BaseModel):
     """Aggregate metrics for admin site visits and availability dashboard."""
 

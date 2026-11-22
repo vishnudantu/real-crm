@@ -6,6 +6,7 @@ import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.modules.bookings import repository
@@ -28,6 +29,8 @@ from app.modules.bookings.models import (
     ACTIVE_BOOKING_STATUSES,
     Booking,
     BookingStatus,
+    EvidenceStatus,
+    VisitEvidence,
     VisitSlot,
     utcnow,
 )
@@ -42,6 +45,7 @@ from app.modules.bookings.schemas import (
     BookingRescheduleRequest,
     BookingResponse,
     BookingStatusUpdateRequest,
+    VisitEvidenceResponse,
     VisitSlotCreateRequest,
     VisitSlotListResponse,
     VisitSlotResponse,
@@ -946,3 +950,148 @@ def schedule_custom_booking(
         notes=payload.notes,
     )
     return create_booking(session, actor=actor, payload=create_req)
+
+
+# --------------------------------------------------------------------------- #
+# Staff site-visit evidence
+# --------------------------------------------------------------------------- #
+
+
+def upload_visit_evidence(
+    session: Session,
+    *,
+    actor: User,
+    booking_id: UUID,
+    contents: bytes,
+    content_type: str,
+    notes: str | None = None,
+) -> VisitEvidence:
+    """Store staff evidence for a booking and record its metadata atomically.
+
+    Only staff (admin or assigned sales executive) may upload; buyers may not.
+    Content type and size are validated at the boundary. If the DB write fails,
+    the stored bytes are removed so no orphan artifact remains.
+    """
+    from app.modules.bookings import evidence_storage
+
+    if actor.role.name == RoleName.BUYER.value:
+        raise InsufficientPermissionsError()
+    if content_type not in evidence_storage.ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Unsupported evidence content type: {content_type}.",
+        )
+    if not contents:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty evidence file.")
+    if len(contents) > evidence_storage.MAX_EVIDENCE_BYTES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Evidence file is too large.")
+
+    booking = _get_visible_booking(session, actor=actor, booking_id=booking_id, for_update=True)
+
+    relative_path, digest = evidence_storage.write_evidence(
+        tenant_id=actor.tenant_id, contents=contents
+    )
+    try:
+        evidence = VisitEvidence(
+            tenant_id=actor.tenant_id,
+            booking_id=booking.id,
+            storage_path=relative_path,
+            content_sha256=digest,
+            content_type=content_type,
+            size_bytes=len(contents),
+            notes=notes,
+            status=EvidenceStatus.SUBMITTED.value,
+            uploaded_by_id=actor.id,
+        )
+        session.add(evidence)
+        session.commit()
+        session.refresh(evidence)
+        return evidence
+    except Exception:
+        session.rollback()
+        evidence_storage.remove_evidence(relative_path)
+        raise
+
+
+def list_visit_evidence(
+    session: Session, *, actor: User, booking_id: UUID
+) -> list[VisitEvidence]:
+    """List evidence for a booking (visibility-checked)."""
+    booking = _get_visible_booking(session, actor=actor, booking_id=booking_id)
+    from sqlalchemy import select
+
+    return list(
+        session.scalars(
+            select(VisitEvidence)
+            .where(
+                VisitEvidence.booking_id == booking.id,
+                VisitEvidence.tenant_id == actor.tenant_id,
+            )
+            .order_by(VisitEvidence.created_at.desc(), VisitEvidence.id)
+        ).all()
+    )
+
+
+def review_visit_evidence(
+    session: Session,
+    *,
+    actor: User,
+    evidence_id: UUID,
+    decision: str,
+    review_note: str | None = None,
+) -> VisitEvidence:
+    """Verify or reject a submitted evidence artifact (staff only)."""
+    from sqlalchemy import select
+
+    if actor.role.name == RoleName.BUYER.value:
+        raise InsufficientPermissionsError()
+    if decision not in (EvidenceStatus.VERIFIED.value, EvidenceStatus.REJECTED.value):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid review decision.")
+
+    evidence = session.scalar(
+        select(VisitEvidence).where(
+            VisitEvidence.id == evidence_id, VisitEvidence.tenant_id == actor.tenant_id
+        )
+    )
+    if evidence is None:
+        raise BookingNotFoundError()
+    # Visibility on the parent booking (admin or assigned executive).
+    _get_visible_booking(session, actor=actor, booking_id=evidence.booking_id, for_update=True)
+    if evidence.status != EvidenceStatus.SUBMITTED.value:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Only SUBMITTED evidence can be reviewed."
+        )
+    evidence.status = decision
+    evidence.verified_by_id = actor.id
+    evidence.verified_at = utcnow()
+    evidence.review_note = review_note
+    evidence.updated_at = utcnow()
+    session.add(evidence)
+    session.commit()
+    session.refresh(evidence)
+    return evidence
+
+
+def get_evidence_for_download(
+    session: Session, *, actor: User, evidence_id: UUID
+):
+    """Return (evidence, absolute_path) after visibility check; path is validated."""
+    from sqlalchemy import select
+    from app.modules.bookings import evidence_storage
+    from fastapi import HTTPException as _HTTPException
+
+    evidence = session.scalar(
+        select(VisitEvidence).where(
+            VisitEvidence.id == evidence_id, VisitEvidence.tenant_id == actor.tenant_id
+        )
+    )
+    if evidence is None:
+        raise BookingNotFoundError()
+    _get_visible_booking(session, actor=actor, booking_id=evidence.booking_id)
+    try:
+        path = evidence_storage.resolve_path(evidence.storage_path)
+    except ValueError as exc:
+        raise _HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Invalid evidence path.") from exc
+    if not path.is_file():
+        raise _HTTPException(status.HTTP_404_NOT_FOUND, "Evidence file not found.")
+    return evidence, path
