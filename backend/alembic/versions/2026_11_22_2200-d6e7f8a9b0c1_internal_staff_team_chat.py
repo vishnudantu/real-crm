@@ -94,17 +94,17 @@ def upgrade() -> None:
             sa.Column("user_id", sa.Uuid(), nullable=False),
             sa.Column("role", sa.String(length=16), server_default="MEMBER", nullable=False),
             sa.Column("last_read_at", sa.DateTime(timezone=True), nullable=True),
-            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column("joined_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
             sa.Column("tenant_id", sa.Uuid(), nullable=False),
             sa.ForeignKeyConstraint(["channel_id"], ["team_channels.id"], name=op.f("fk_team_channel_members_channel_id_team_channels"), ondelete="CASCADE"),
             sa.ForeignKeyConstraint(["user_id"], ["users.id"], name=op.f("fk_team_channel_members_user_id_users"), ondelete="CASCADE"),
             sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], name=op.f("fk_team_channel_members_tenant_id_tenants"), ondelete="RESTRICT"),
             sa.PrimaryKeyConstraint("id", name=op.f("pk_team_channel_members")),
-            sa.UniqueConstraint("tenant_id", "channel_id", "user_id", name="uq_team_channel_members_membership"),
+            sa.UniqueConstraint("tenant_id", "channel_id", "user_id", name="uq_team_channel_members_tenant_channel_user"),
+            sa.CheckConstraint("role IN ('OWNER','MODERATOR','MEMBER')", name="team_channel_member_role_valid"),
         )
-        op.create_index(op.f("ix_team_channel_members_channel_id"), "team_channel_members", ["channel_id"], unique=False)
-        op.create_index(op.f("ix_team_channel_members_user_id"), "team_channel_members", ["user_id"], unique=False)
         op.create_index(op.f("ix_team_channel_members_tenant_id"), "team_channel_members", ["tenant_id"], unique=False)
+        op.create_index("ix_team_channel_members_user_channel", "team_channel_members", ["tenant_id", "user_id", "channel_id"], unique=False)
 
     inspector = sa.inspect(bind)
     tables = _tables_present(inspector)
@@ -124,8 +124,8 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], name=op.f("fk_team_messages_tenant_id_tenants"), ondelete="RESTRICT"),
             sa.PrimaryKeyConstraint("id", name=op.f("pk_team_messages")),
         )
-        op.create_index(op.f("ix_team_messages_channel_id"), "team_messages", ["channel_id"], unique=False)
         op.create_index(op.f("ix_team_messages_tenant_id"), "team_messages", ["tenant_id"], unique=False)
+        op.create_index("ix_team_messages_tenant_channel_created", "team_messages", ["tenant_id", "channel_id", "created_at"], unique=False)
 
 
 def downgrade() -> None:
