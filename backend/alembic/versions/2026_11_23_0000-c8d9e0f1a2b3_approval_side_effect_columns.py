@@ -1,7 +1,7 @@
 """approval side-effect columns for bookings and property units
 
 Revision ID: c8d9e0f1a2b3
-Revises: f7a8b9c0d1e2
+Revises: e9a0b1c2d3e4
 Create Date: 2026-11-23 00:00:00
 
 Adds the entity-side flag columns wired to the approvals dispatcher:
@@ -27,7 +27,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "c8d9e0f1a2b3"
-down_revision: Union[str, None] = "f7a8b9c0d1e2"
+down_revision: Union[str, None] = "e9a0b1c2d3e4"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
