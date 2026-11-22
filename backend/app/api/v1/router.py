@@ -34,6 +34,7 @@ from app.modules.tenancy.router import router as tenancy_router
 from app.modules.teamchat.router import legacy_router as legacy_teamchat_router
 from app.modules.teamchat.router import router as teamchat_router
 from app.modules.users.router import router as users_router
+from app.modules.voice_intel.router import router as voice_intel_router
 
 api_router = APIRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
@@ -70,3 +71,4 @@ api_router.include_router(legacy_teamchat_router)
 api_router.include_router(omnichannel_router)
 api_router.include_router(channel_webhook_router)
 api_router.include_router(widget_router)
+api_router.include_router(voice_intel_router)
