@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,10 +10,8 @@ from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
-from app.modules.approvals.models import ApprovalRequest
 from app.modules.tenancy.models import Tenant
 from app.modules.users.models import RoleName, User
-from tests.support import TEST_PASSWORD
 
 
 @pytest.fixture()
@@ -58,6 +55,32 @@ def _decision(client: TestClient, env: dict, request_id: str, decision="APPROVED
         json={"decision": decision, "note": "Reviewed by the manager."},
         headers=env["admin_headers"],
     )
+
+
+def test_approver_must_be_active_admin_in_requester_tenant(
+    client: TestClient, env: dict, user_factory
+) -> None:
+    other_tenant = Tenant(slug=f"ap-{uuid4().hex[:8]}", name="Approver Tenant")
+    with env["factory"]() as session:
+        session.add(other_tenant)
+        session.commit()
+        session.refresh(other_tenant)
+    other_admin = user_factory(role=RoleName.ADMIN, tenant=other_tenant)
+    sales_approver = user_factory(role=RoleName.SALES_EXECUTIVE)
+
+    for approver in (other_admin, sales_approver):
+        response = client.post(
+            "/api/v1/approvals/requests",
+            json={
+                "request_type": "DISCOUNT",
+                "reference_type": "sale_booking",
+                "reference_id": str(uuid4()),
+                "reason": "The designated approver must be a tenant admin.",
+                "approver_id": str(approver.id),
+            },
+            headers=env["sales_headers"],
+        )
+        assert response.status_code == 404
 
 
 def test_staff_create_pending_request(client: TestClient, env: dict) -> None:
@@ -231,6 +254,88 @@ def test_cross_tenant_decision_and_cancel_return_404(
     assert response.status_code == 404
 
 
+def test_cancelled_request_cannot_be_decided(client: TestClient, env: dict) -> None:
+    request_id = _create_request(client, env)["id"]
+    assert client.post(
+        f"/api/v1/approvals/requests/{request_id}/cancel", headers=env["sales_headers"]
+    ).status_code == 200
+    response = _decision(client, env, request_id)
+    assert response.status_code == 400
+
+
+def test_own_terminal_request_reports_pending_error_before_self_approval(
+    client: TestClient, env: dict
+) -> None:
+    response = client.post(
+        "/api/v1/approvals/requests",
+        json={
+            "request_type": "DEMAND_LETTER",
+            "reference_type": "installment",
+            "reference_id": str(uuid4()),
+            "reason": "Admin-created request reaches its terminal state first.",
+        },
+        headers=env["admin_headers"],
+    )
+    request_id = response.json()["id"]
+    assert client.post(
+        f"/api/v1/approvals/requests/{request_id}/cancel", headers=env["admin_headers"]
+    ).status_code == 200
+    decided = _decision(client, env, request_id)
+    assert decided.status_code == 400
+
+
+def test_list_is_paged_and_reports_total(client: TestClient, env: dict) -> None:
+    for _ in range(3):
+        _create_request(client, env)
+    page = client.get(
+        "/api/v1/approvals/requests?limit=2&offset=0", headers=env["sales_headers"]
+    )
+    assert page.status_code == 200, page.text
+    body = page.json()
+    assert body["total"] == 3
+    assert body["limit"] == 2 and body["offset"] == 0
+    assert len(body["items"]) == 2
+    second = client.get(
+        "/api/v1/approvals/requests?limit=2&offset=2", headers=env["sales_headers"]
+    ).json()
+    assert second["total"] == 3 and len(second["items"]) == 1
+    assert {item["id"] for item in body["items"]} != {item["id"] for item in second["items"]}
+
+
+def test_decision_rejects_cancelled_status_422(client: TestClient, env: dict) -> None:
+    request_id = _create_request(client, env)["id"]
+    response = client.post(
+        f"/api/v1/approvals/requests/{request_id}/decision",
+        json={"decision": "CANCELLED"},
+        headers=env["admin_headers"],
+    )
+    assert response.status_code == 422
+
+
+def test_service_rejects_non_admin_decision(env: dict) -> None:
+    from fastapi import HTTPException
+    from app.modules.approvals import service
+
+    with env["factory"]() as session:
+        sales = session.get(User, env["sales"].id)
+        request = service.request_approval(
+            session,
+            actor=sales,
+            request_type="DISCOUNT",
+            reference_type="sale_booking",
+            reference_id=uuid4(),
+            reason="Sales staff cannot make their own decision.",
+        )
+        try:
+            service.decide(
+                session, actor=sales, request_id=request.id, decision="APPROVED"
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 403
+        else:
+            pytest.fail("Non-admin service decision must be forbidden.")
+
+
 def test_service_approval_records_decision_without_entity_side_effects(env: dict) -> None:
     from app.modules.approvals import service
     from app.modules.approvals.models import ApprovalStatus
@@ -261,13 +366,12 @@ def test_migration_upgrade_and_downgrade_on_isolated_sqlite() -> None:
 
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
-    from sqlalchemy import MetaData, Table
 
     # Resolve only tenant/user tables needed for the migration's foreign keys.
     import app.modules.approvals.models  # noqa: F401
 
     migration_path = next(
-        (Path(__file__).parents[1] / "alembic" / "versions").glob("*a2b3c4d5e6f7*")
+        (Path(__file__).parents[2] / "alembic" / "versions").glob("*a2b3c4d5e6f7*")
     )
     spec = importlib.util.spec_from_file_location("approval_requests_migration", migration_path)
     migration = importlib.util.module_from_spec(spec)
@@ -276,31 +380,32 @@ def test_migration_upgrade_and_downgrade_on_isolated_sqlite() -> None:
     assert migration.down_revision == "f1a2b3c4d5e6"
 
     engine = create_engine("sqlite+pysqlite:///:memory:")
-    metadata = MetaData()
-    with engine.connect() as connection:
-        for table_name in ("roles", "tenants", "users"):
-            Table(table_name, Base.metadata, autoload_with=connection).create(connection)
-        context = MigrationContext.configure(connection)
-        original_get_bind = Operations.get_bind
-        Operations.get_bind = lambda self: connection
-        try:
-            with Operations.context(context):
-                migration.upgrade()
-                table_names = inspect(connection).get_table_names()
-                assert "approval_requests" in table_names
-                index_names = {
-                    index["name"]
-                    for index in inspect(connection).get_indexes("approval_requests")
-                }
-                assert index_names == {
-                    "ix_approval_requests_reference_id",
-                    "ix_approval_requests_tenant_id",
-                    "ix_approval_requests_tenant_status",
-                    "ix_approval_requests_tenant_request_type",
-                    "ix_approval_requests_tenant_id_id",
-                }
-                migration.downgrade()
-                assert "approval_requests" not in inspect(connection).get_table_names()
-        finally:
-            Operations.get_bind = original_get_bind
-            engine.dispose()
+    try:
+        with engine.connect() as connection:
+            for table_name in ("roles", "tenants", "users"):
+                Base.metadata.tables[table_name].create(connection)
+            context = MigrationContext.configure(connection)
+            original_get_bind = Operations.get_bind
+            Operations.get_bind = lambda self: connection
+            try:
+                with Operations.context(context):
+                    migration.upgrade()
+                    table_names = inspect(connection).get_table_names()
+                    assert "approval_requests" in table_names
+                    index_names = {
+                        index["name"]
+                        for index in inspect(connection).get_indexes("approval_requests")
+                    }
+                    assert index_names == {
+                        "ix_approval_requests_reference_id",
+                        "ix_approval_requests_tenant_id",
+                        "ix_approval_requests_tenant_status",
+                        "ix_approval_requests_tenant_request_type",
+                        "ix_approval_requests_tenant_id_id",
+                    }
+                    migration.downgrade()
+                    assert "approval_requests" not in inspect(connection).get_table_names()
+            finally:
+                Operations.get_bind = original_get_bind
+    finally:
+        engine.dispose()

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import health
 from app.modules.ai_assistant.router import router as ai_assistant_router
+from app.modules.approvals.router import router as approvals_router
 from app.modules.auth.router import router as auth_router
 from app.modules.billing.router import router as billing_router
 from app.modules.bookings.router import bookings_router, slots_router
@@ -40,6 +41,7 @@ from app.modules.voice_intel.router import router as voice_intel_router
 api_router = APIRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
 api_router.include_router(auth_router)
+api_router.include_router(approvals_router)
 api_router.include_router(users_router)
 api_router.include_router(projects_router)
 api_router.include_router(leads_router)
