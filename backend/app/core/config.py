@@ -150,6 +150,30 @@ class Settings(BaseSettings):
     meta_app_secret: SecretStr | None = Field(default=None)
     meta_verify_token: SecretStr | None = Field(default=None)
     meta_page_access_token: SecretStr | None = Field(default=None)
+    meta_oauth_client_id: str | None = Field(
+        default=None,
+        description="Meta app ID used for the Lead Ads OAuth authorization code flow.",
+    )
+    meta_oauth_client_secret: SecretStr | None = Field(
+        default=None,
+        description="Meta app secret for OAuth exchange and webhook signature verification.",
+    )
+    google_ads_developer_token: SecretStr | None = Field(
+        default=None,
+        description="Google Ads API developer token used for account access and offline conversion setup.",
+    )
+    google_ads_client_id: str | None = Field(
+        default=None,
+        description="Google OAuth web client ID authorized for the Google Ads API scope.",
+    )
+    google_ads_client_secret: SecretStr | None = Field(
+        default=None,
+        description="Google OAuth web client secret; never expose this to the browser.",
+    )
+    oauth_redirect_base_url: str | None = Field(
+        default=None,
+        description="Externally reachable backend origin, without a path, used to construct exact OAuth callback URIs.",
+    )
     leads_imap_host: str | None = Field(default=None)
     leads_imap_user: str | None = Field(default=None)
     leads_imap_pass: SecretStr | None = Field(default=None)

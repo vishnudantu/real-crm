@@ -13,6 +13,7 @@ from app.modules.customers.router import opportunities_router, router as custome
 from app.modules.dashboard.router import router as dashboard_router
 from app.modules.follow_ups.router import router as follow_ups_router
 from app.modules.handoffs.router import handoffs_router
+from app.modules.integrations.connections_router import router as integration_connections_router
 from app.modules.integrations.router import router as integrations_router
 from app.modules.inventory.router import router as inventory_router
 from app.modules.leads.router import router as leads_router
@@ -51,6 +52,7 @@ api_router.include_router(tenancy_router)
 api_router.include_router(messaging_router)
 api_router.include_router(operator_router)
 api_router.include_router(connectors_router)
+api_router.include_router(integration_connections_router)
 api_router.include_router(integrations_router)
 api_router.include_router(inventory_router)
 api_router.include_router(billing_router)
