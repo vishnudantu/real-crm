@@ -43,6 +43,20 @@ def _past(hours: int = 24) -> datetime:
     return datetime.now(UTC) - timedelta(hours=hours)
 
 
+def _due_today() -> datetime:
+    """A moment guaranteed to be inside the CURRENT UTC day.
+
+    Fixed offsets like now+2h cross UTC midnight after 22:00 UTC and make
+    'due today' categorization flake by wall-clock time. Prefer now+30min;
+    within 30 minutes of midnight fall back to now-1h (still today).
+    """
+    now = datetime.now(UTC)
+    tomorrow_start = datetime(now.year, now.month, now.day, tzinfo=UTC) + timedelta(days=1)
+    if now + timedelta(minutes=30) < tomorrow_start:
+        return now + timedelta(minutes=30)
+    return now - timedelta(hours=1)
+
+
 def _create_active_project(client: TestClient, admin_headers: dict[str, str], name: str) -> dict[str, Any]:
     project = create_project(client, admin_headers, name=name)
     client.patch(
@@ -99,7 +113,7 @@ def test_create_and_list_follow_up(
     assign_lead(client, admin_headers, lead_id=lead["id"], executive_id=str(exec_1.id))
 
     # 2. Exec 1 creates a follow-up
-    sched_time = _future(hours=2)
+    sched_time = _due_today()
     create_payload = {
         "lead_id": lead["id"],
         "scheduled_at": sched_time.isoformat(),
