@@ -35,6 +35,28 @@ class UnitCreateRequest(BaseModel):
     rera_disclosure_json: dict = Field(default_factory=dict)
 
 
+class UnitUpdateRequest(BaseModel):
+    """Edit mutable unit fields. Status changes go through the state machine.
+
+    ``internal_code`` is immutable (it is the canonical identity used across
+    holds, bookings, and documents) and is intentionally absent here.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    configuration: str | None = Field(default=None, max_length=100)
+    floor: str | None = Field(default=None, max_length=64)
+    position: str | None = Field(default=None, max_length=64)
+    tower: str | None = Field(default=None, max_length=64)
+    carpet_area_sqft: int | None = Field(default=None, ge=1)
+    built_up_area_sqft: int | None = Field(default=None, ge=1)
+    plot_number: str | None = Field(default=None, max_length=64)
+    facing: str | None = Field(default=None, max_length=64)
+    views: str | None = Field(default=None, max_length=255)
+    saleable: bool | None = None
+    rera_disclosure_json: dict | None = None
+
+
 class UnitResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

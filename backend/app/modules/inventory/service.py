@@ -42,7 +42,11 @@ from app.modules.inventory.models import (
     UnitStatus,
     UnitStatusEvent,
 )
-from app.modules.inventory.schemas import BulkRowResult, UnitCreateRequest
+from app.modules.inventory.schemas import (
+    BulkRowResult,
+    UnitCreateRequest,
+    UnitUpdateRequest,
+)
 from app.modules.leads.models import Lead
 from app.modules.projects.models import Project
 from app.modules.users.models import RoleName
@@ -347,6 +351,76 @@ def transition_unit(
     session.commit()
     session.refresh(unit)
     return unit
+
+
+def update_unit(
+    session: Session, *, actor, unit_id: UUID, payload: UnitUpdateRequest
+) -> PropertyUnit:
+    """Edit mutable unit fields. ``internal_code`` is immutable (canonical id).
+
+    Status transitions are deliberately not handled here; they go through
+    ``transition_unit`` so the state machine and its event log stay authoritative.
+    """
+    unit = _get_unit_or_404(session, unit_id, tenant_id=actor.tenant_id)
+    for field in (
+        "configuration",
+        "floor",
+        "position",
+        "tower",
+        "carpet_area_sqft",
+        "built_up_area_sqft",
+        "plot_number",
+        "facing",
+        "views",
+        "saleable",
+        "rera_disclosure_json",
+    ):
+        if field in payload.model_fields_set:
+            setattr(unit, field, getattr(payload, field))
+    unit.updated_at = _now()
+    session.add(unit)
+    session.commit()
+    session.refresh(unit)
+    return unit
+
+
+def delete_unit(session: Session, *, actor, unit_id: UUID) -> None:
+    """Delete a DRAFT unit that has no holds or bookings (safe correction).
+
+    A unit that has progressed beyond DRAFT, or that has any hold or a linked
+    sale booking, cannot be deleted — its history must be preserved. Such units
+    should be transitioned to CANCELLED via the state machine instead.
+    """
+    unit = _get_unit_or_404(session, unit_id, tenant_id=actor.tenant_id)
+    if unit.status != UnitStatus.DRAFT.value:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Only DRAFT units can be deleted; cancel the unit instead.",
+        )
+    has_hold = session.scalar(
+        select(UnitHold.id).where(
+            UnitHold.unit_id == unit.id, UnitHold.tenant_id == actor.tenant_id
+        ).limit(1)
+    )
+    if has_hold is not None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Cannot delete a unit that has a hold; release the hold first.",
+        )
+    from app.modules.postsales.models import SaleBooking
+
+    has_booking = session.scalar(
+        select(SaleBooking.id).where(
+            SaleBooking.unit_id == unit.id, SaleBooking.tenant_id == actor.tenant_id
+        ).limit(1)
+    )
+    if has_booking is not None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Cannot delete a unit that is linked to a sale booking.",
+        )
+    session.delete(unit)
+    session.commit()
 
 
 def acquire_hold(

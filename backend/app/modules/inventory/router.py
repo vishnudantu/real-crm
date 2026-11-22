@@ -28,6 +28,7 @@ from app.modules.inventory.schemas import (
     UnitResponse,
     UnitStatusEventResponse,
     UnitStatusUpdateRequest,
+    UnitUpdateRequest,
 )
 from app.modules.users.models import RoleName, User
 
@@ -103,6 +104,25 @@ def get_unit_endpoint(
     response = UnitDetailResponse.model_validate(unit)
     response.status_history = [UnitStatusEventResponse.model_validate(row) for row in history]
     return response
+
+
+@router.patch("/units/{unit_id}", response_model=UnitResponse)
+def update_unit_endpoint(
+    unit_id: UUID,
+    payload: UnitUpdateRequest,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+):
+    return service.update_unit(db, actor=admin, unit_id=unit_id, payload=payload)
+
+
+@router.delete("/units/{unit_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_unit_endpoint(
+    unit_id: UUID,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    service.delete_unit(db, actor=admin, unit_id=unit_id)
 
 
 @router.patch("/units/{unit_id}/status", response_model=UnitResponse)

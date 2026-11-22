@@ -166,8 +166,15 @@ def create_booking(
         raise SaleBookingExistsError()
 
     if payload.unit_id is not None:
+        from app.modules.inventory import repository as inventory_repository
         from app.modules.inventory.models import PropertyUnit
 
+        # Serialize with inventory delete/edit guards: a direct booking with a
+        # unit_id must not slip into the check→commit window of a concurrent
+        # unit DELETE and silently null the canonical link.
+        inventory_repository.lock_unit_for_hold(
+            session, tenant_id=actor.tenant_id, unit_id=payload.unit_id
+        )
         unit = session.scalar(
             select(PropertyUnit).where(
                 PropertyUnit.id == payload.unit_id,
