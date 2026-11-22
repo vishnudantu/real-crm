@@ -85,4 +85,5 @@ TENANT_TABLES = frozenset({
     "lead_ingestion_events", "subscriptions", "invoices",
     "channel_credentials", "channel_conversations", "channel_messages",
     "call_records", "call_recordings", "tenant_features", "integration_connections",
+    "contacts", "contact_methods", "opportunities", "contact_merges",
 })

@@ -20,6 +20,7 @@ from app.modules.billing import models as billing_models  # noqa: F401
 from app.modules.bookings import models as bookings_models  # noqa: F401
 from app.modules.connectors import models as connectors_models  # noqa: F401
 from app.modules.conversations import models as conversations_models  # noqa: F401
+from app.modules.customers import models as customers_models  # noqa: F401
 from app.modules.dashboard import models as dashboard_models  # noqa: F401
 from app.modules.follow_ups import models as follow_ups_models  # noqa: F401
 from app.modules.handoffs import models as handoffs_models  # noqa: F401
