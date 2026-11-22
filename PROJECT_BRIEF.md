@@ -148,6 +148,20 @@ merged onto a single consolidated branch, with one linear migration chain
 - **Service desk** (`2803c19`+`17a466f`) — support tickets with SLA map, breach
   queue, TCK MAX-sequence numbering, validated transitions.
 
+### Wave 2 (parallel agents + own slices, on `consolidation`)
+- **Construction milestones** (`8963fba`) — progress tracking with a CERTIFIED gate
+  (admin-only certification; documented linkage to construction-linked demand letters).
+- **BuyerVault / buyer documents** (`090e7a1`) — buyer document vault with
+  verification workflow, document requests auto-fulfilled on matching upload,
+  encrypted-at-rest-style storage with sha256 + traversal guards.
+- **Connect dialer** (`8076468`) — call dispositions, per-tenant Do-Not-Call
+  suppression, scheduled callbacks, and a live wallboard read-model over the
+  existing LiveKit calling.
+- **Lifecycle message seeding** (`1f0b24b`) — idempotent default templates +
+  trigger rules so thank-you-after-visit, booking-confirmation, and receipt
+  emails actually fire (`POST /messaging/seed-lifecycle`).
+- **Approval side-effects + demand-letter approval flow** — in flight (2 agents).
+
 ### Documents engine — **[this session, commit `0e15689`]**
 Versioned, numbered, verifiable documents with deterministic PDFs.
 - `DocumentTemplate` (DEMAND_LETTER / RECEIPT / STATEMENT), versioned per tenant,
