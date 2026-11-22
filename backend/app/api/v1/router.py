@@ -10,6 +10,7 @@ from app.modules.billing.router import router as billing_router
 from app.modules.bookings.router import bookings_router, slots_router
 from app.modules.brokers.router import router as brokers_router
 from app.modules.connectors.router import router as connectors_router
+from app.modules.construction.router import router as construction_router
 from app.modules.conversations.router import router as conversations_router
 from app.modules.customers.router import opportunities_router, router as customers_router
 from app.modules.dashboard.router import router as dashboard_router
@@ -68,6 +69,7 @@ api_router.include_router(integrations_router)
 api_router.include_router(inventory_router)
 api_router.include_router(billing_router)
 api_router.include_router(postsales_router)
+api_router.include_router(construction_router)
 api_router.include_router(reconciliation_router)
 api_router.include_router(documents_router)
 api_router.include_router(teamchat_router)
