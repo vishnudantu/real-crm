@@ -29,72 +29,91 @@ class FeatureSpec:
     description: str
     default_enabled: bool = False
     plan_required: bool = False
+    monthly_price_paise: int = 0
 
 
 # Catalog keys are stable strings; never reuse a retired key.
 FEATURE_CATALOG: tuple[FeatureSpec, ...] = (
     FeatureSpec(
         "core_leads", "Lead management", "Intake, assignment, and lifecycle of leads",
-        default_enabled=True,
+        default_enabled=True, monthly_price_paise=0,
     ),
     FeatureSpec(
         "core_visits", "Site visits", "Capacity-controlled site-visit booking",
-        default_enabled=True,
+        default_enabled=True, monthly_price_paise=0,
     ),
     FeatureSpec(
         "ai_assistant", "AI assistant", "Fact-grounded multilingual buyer chat",
-        default_enabled=True,
+        default_enabled=True, monthly_price_paise=49900,
     ),
     FeatureSpec(
         "omnichannel_inbox", "Omnichannel inbox",
         "One inbox for WhatsApp, Instagram, Messenger and web chat",
+        monthly_price_paise=79900,
     ),
     FeatureSpec(
         "channel_whatsapp", "WhatsApp channel", "Official WhatsApp Cloud API conversation channel",
+        monthly_price_paise=59900,
     ),
     FeatureSpec(
         "channel_instagram", "Instagram channel", "Instagram DM conversation channel",
+        monthly_price_paise=39900,
     ),
     FeatureSpec(
         "channel_messenger", "Facebook Messenger channel", "Messenger conversation channel",
+        monthly_price_paise=39900,
     ),
     FeatureSpec(
         "web_widget", "Website widget", "Embeddable chat bubble and lead-capture form",
-        default_enabled=True,
+        default_enabled=True, monthly_price_paise=0,
     ),
     FeatureSpec(
         "calling", "Browser calling", "In-app WebRTC calls with recording",
+        monthly_price_paise=99900,
     ),
     FeatureSpec(
         "messaging_triggers", "Messaging automation", "Trigger rules and outbound delivery engine",
-        default_enabled=True,
+        default_enabled=True, monthly_price_paise=29900,
     ),
     FeatureSpec(
         "billing", "Billing", "Razorpay subscriptions and invoices",
+        monthly_price_paise=29900,
     ),
     FeatureSpec(
         "post_sales", "Post-sales pack", "Sale bookings, payment plans, receipts, commissions",
+        monthly_price_paise=99900,
     ),
     FeatureSpec(
         "connectors", "Lead connectors", "Meta Lead Ads and portal email ingestion",
+        monthly_price_paise=49900,
     ),
     FeatureSpec(
         "analytics", "Analytics", "Dashboards, trends, and executive reporting",
-        default_enabled=True,
+        default_enabled=True, monthly_price_paise=39900,
     ),
     FeatureSpec(
         "sla", "SLA timers", "Response targets and breach alarms",
+        monthly_price_paise=39900,
     ),
     FeatureSpec(
         "knowledge_base", "Knowledge base", "Public FAQ and article center",
+        monthly_price_paise=19900,
     ),
     FeatureSpec(
         "csat", "CSAT surveys", "Post-interaction satisfaction collection",
+        monthly_price_paise=19900,
     ),
 )
 
 FEATURE_KEYS: frozenset[str] = frozenset(spec.key for spec in FEATURE_CATALOG)
 FEATURE_INDEX: dict[str, FeatureSpec] = {spec.key: spec for spec in FEATURE_CATALOG}
+
+
+def module_price(key: str) -> int:
+    """Monthly price of a catalog module in paise; unknown keys are free."""
+
+    spec = FEATURE_INDEX.get(key)
+    return spec.monthly_price_paise if spec is not None else 0
 
 
 def catalog_default(key: str) -> bool:
