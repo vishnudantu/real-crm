@@ -154,12 +154,21 @@ def test_follow_up_metrics_and_categorization(
     )
     assign_lead(client, admin_headers, lead_id=lead["id"], executive_id=str(exec_1.id))
 
-    # Follow-up 1: Due Today
+    # Follow-up 1: Due Today. Pinned inside the CURRENT UTC day so the
+    # assertion cannot flake near UTC midnight (a fixed +3h from 21:00 UTC
+    # onward would land in "upcoming" instead).
+    now = datetime.now(UTC)
+    tomorrow_start = datetime(now.year, now.month, now.day, tzinfo=UTC) + timedelta(days=1)
+    due_today_at = (
+        now + timedelta(minutes=30)
+        if now + timedelta(minutes=30) < tomorrow_start
+        else now - timedelta(hours=1)  # within 30 min of midnight: still today
+    )
     client.post(
         "/api/v1/follow-ups",
         json={
             "lead_id": lead["id"],
-            "scheduled_at": _future(hours=3).isoformat(),
+            "scheduled_at": due_today_at.isoformat(),
             "type": "CALL",
             "priority": "HIGH",
         },
