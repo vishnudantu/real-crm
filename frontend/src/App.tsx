@@ -32,6 +32,8 @@ import { VisitManagementPage } from "./admin/VisitManagementPage";
 import { AnalyticsDashboardPage } from "./admin/AnalyticsDashboardPage";
 import { SystemSettingsPage } from "./admin/SystemSettingsPage";
 import { MyAccountPage } from "./admin/MyAccountPage";
+import { InventoryMapPage } from "./inventory/InventoryMapPage";
+import { InventoryUnitsPage } from "./inventory/InventoryUnitsPage";
 
 const SaleBookingsPage = lazy(() =>
   import("./admin/sales/SaleBookingsPage").then((module) => ({
@@ -308,6 +310,8 @@ export default function App() {
               <Route path="overview" element={<AdminOverviewPage />} />
               <Route path="users" element={<UserManagementPage />} />
               <Route path="projects" element={<ProjectManagementPage />} />
+              <Route path="inventory" element={<InventoryMapPage />} />
+              <Route path="inventory/units" element={<InventoryUnitsPage />} />
               <Route path="visits" element={<VisitManagementPage />} />
               <Route path="analytics" element={<AnalyticsDashboardPage />} />
               <Route

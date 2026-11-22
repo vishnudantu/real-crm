@@ -51,6 +51,13 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
     ],
   },
   {
+    label: "Property",
+    items: [
+      { label: "Inventory Map", shortLabel: "Map", to: "/admin/inventory", exact: true },
+      { label: "Units & Import", shortLabel: "Units", to: "/admin/inventory/units" },
+    ],
+  },
+  {
     label: "Team",
     items: [{ label: "User Management", shortLabel: "Users", to: "/admin/users" }],
   },
