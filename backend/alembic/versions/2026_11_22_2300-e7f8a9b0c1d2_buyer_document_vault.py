@@ -1,7 +1,7 @@
 """buyer_docs: buyer document vault and collection requests
 
 Revision ID: e7f8a9b0c1d2
-Revises: f7a8b9c0d1e2
+Revises: c3d4e5f6a7b9
 Create Date: 2026-11-22 23:00:00
 
 """
@@ -14,7 +14,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision: str = "e7f8a9b0c1d2"
-down_revision: Union[str, None] = "f7a8b9c0d1e2"
+down_revision: Union[str, None] = "c3d4e5f6a7b9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
