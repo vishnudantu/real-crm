@@ -10,6 +10,7 @@ from app.modules.billing.router import router as billing_router
 from app.modules.bookings.router import bookings_router, slots_router
 from app.modules.brokers.router import router as brokers_router
 from app.modules.connectors.router import router as connectors_router
+from app.modules.connect_dialer.router import router as connect_dialer_router
 from app.modules.conversations.router import router as conversations_router
 from app.modules.customers.router import opportunities_router, router as customers_router
 from app.modules.dashboard.router import router as dashboard_router
@@ -78,3 +79,4 @@ api_router.include_router(tenant_ai_router)
 api_router.include_router(channel_webhook_router)
 api_router.include_router(widget_router)
 api_router.include_router(voice_intel_router)
+api_router.include_router(connect_dialer_router)
