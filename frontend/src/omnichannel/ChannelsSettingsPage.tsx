@@ -1,27 +1,23 @@
 import { useEffect, useState } from "react";
 import {
   Camera,
-  Check,
-  Code2,
-  Copy,
-  ExternalLink,
   LoaderCircle,
   MessageCircle,
   Plug,
   Save,
   Send,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   configureChannel,
   fetchChannelCredentials,
-  fetchEmbedSnippet,
 } from "./api";
 import { errorMessage } from "../shared/apiRequest";
 import type {
   ChannelCredentialSummary,
   ChannelType,
-  EmbedSnippet,
 } from "./omnichannelModel";
+import { WebsiteWidgetInstaller } from "./WebsiteWidgetInstaller";
 
 interface ChannelFormState {
   provider: string;
@@ -111,8 +107,6 @@ export function ChannelsSettingsPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [embed, setEmbed] = useState<EmbedSnippet | null>(null);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     void fetchChannelCredentials()
@@ -132,7 +126,6 @@ export function ChannelsSettingsPage() {
         setForms(next);
       })
       .catch((err) => setError(errorMessage(err, "Channel configuration is unavailable.")));
-    void fetchEmbedSnippet().then(setEmbed).catch(() => undefined);
   }, []);
 
   const formFor = (channel: string): ChannelFormState => forms[channel] ?? EMPTY_FORM;
@@ -183,17 +176,6 @@ export function ChannelsSettingsPage() {
     }
   };
 
-  const copySnippet = async () => {
-    if (!embed?.snippet) return;
-    try {
-      await navigator.clipboard.writeText(embed.snippet);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setError("Clipboard access was blocked by the browser.");
-    }
-  };
-
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <header>
@@ -214,47 +196,11 @@ export function ChannelsSettingsPage() {
         </p>
       )}
 
-      {/* Website widget installer */}
-      <section className="rounded-2xl border border-charcoal/10 bg-white p-5 shadow-xs">
-        <div className="flex items-center gap-2">
-          <Code2 aria-hidden="true" className="size-5 text-charcoal/70" />
-          <h2 className="text-base font-semibold text-charcoal">Website chat & lead-capture widget</h2>
-        </div>
-        <p className="mt-1 text-sm text-charcoal/60">
-          Add this one line to any website. A branded chat bubble and contact form appear automatically;
-          every enquiry lands in your omnichannel inbox with an AI-grounded first reply.
-        </p>
-        {embed?.enabled && embed.snippet ? (
-          <>
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-charcoal/10 bg-[#FAFAF7] p-3">
-              <code className="flex-1 overflow-x-auto text-xs break-all text-charcoal/80">{embed.snippet}</code>
-              <button
-                type="button"
-                onClick={() => void copySnippet()}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-charcoal/15 px-3 py-1.5 text-xs font-semibold text-charcoal hover:bg-charcoal/5"
-              >
-                {copied ? <Check aria-hidden="true" className="size-3.5 text-emerald-600" /> : <Copy aria-hidden="true" className="size-3.5" />}
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-charcoal/55">{embed.installation}</p>
-            {embed.embed_url && (
-              <a
-                href={embed.embed_url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline"
-              >
-                Preview embed script <ExternalLink aria-hidden="true" className="size-3" />
-              </a>
-            )}
-          </>
-        ) : (
-          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            The website widget is not enabled for this organization. Ask your PropFlow operator to enable it.
-          </p>
-        )}
-      </section>
+      <WebsiteWidgetInstaller />
+
+      <div className="flex justify-end">
+        <Link to="/admin/settings/widget" className="text-xs font-semibold text-sky-800 hover:underline">Open widget installation guide</Link>
+      </div>
 
       {CHANNEL_SECTIONS.map((section) => {
         const form = formFor(section.channel);

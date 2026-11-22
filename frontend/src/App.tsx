@@ -31,6 +31,7 @@ import { ProjectManagementPage } from "./admin/ProjectManagementPage";
 import { VisitManagementPage } from "./admin/VisitManagementPage";
 import { AnalyticsDashboardPage } from "./admin/AnalyticsDashboardPage";
 import { SystemSettingsPage } from "./admin/SystemSettingsPage";
+import { MyAccountPage } from "./admin/MyAccountPage";
 
 const SaleBookingsPage = lazy(() =>
   import("./admin/sales/SaleBookingsPage").then((module) => ({
@@ -316,6 +317,9 @@ export default function App() {
                 }
               />
               <Route path="settings" element={<SystemSettingsPage />} />
+              <Route path="settings/:section" element={<SystemSettingsPage />} />
+              <Route path="notifications" element={<SystemSettingsPage initialTab="notifications" />} />
+              <Route path="account" element={<MyAccountPage />} />
               <Route
                 path="audit-logs"
                 element={<SystemSettingsPage initialTab="audit_logs" />}

@@ -1,3 +1,5 @@
+import { getSession } from "./session";
+
 export type RoleName = "BUYER" | "SALES_EXECUTIVE" | "ADMIN";
 
 export type AuthenticatedUser = {
@@ -153,6 +155,47 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   return payload as T;
+}
+
+export type MessageResponse = {
+  message: string;
+};
+
+export type ChangePasswordPayload = {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
+
+async function authenticatedRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const session = getSession();
+  if (!session?.accessToken) {
+    throw new ApiError(401, "UNAUTHORIZED", "Active session required.");
+  }
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${session.accessToken}`);
+  return request<T>(path, { ...init, headers });
+}
+
+export function logoutRequest(): Promise<MessageResponse> {
+  return authenticatedRequest<MessageResponse>("/auth/logout", { method: "POST" });
+}
+
+export function revokeAllSessionsRequest(): Promise<MessageResponse> {
+  return authenticatedRequest<MessageResponse>("/auth/revoke-all", { method: "POST" });
+}
+
+export function changePasswordRequest(
+  input: ChangePasswordPayload,
+): Promise<MessageResponse> {
+  return authenticatedRequest<MessageResponse>("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: input.currentPassword,
+      new_password: input.newPassword,
+      confirm_password: input.confirmPassword,
+    }),
+  });
 }
 
 export function registerBuyer(
