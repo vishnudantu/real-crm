@@ -128,6 +128,26 @@ modules marked **[this session]** were built/extended in the current worktree.
   browser calling via LiveKit (`CallRecord` room + `CallRecording` list).
 - **Billing** — subscription summary, plans, Razorpay webhook.
 
+### Swarm-built modules (parallel agents, consolidated on branch `consolidation`)
+Eight new backend modules were built in parallel by isolated-worktree agents and
+merged onto a single consolidated branch, with one linear migration chain
+(single head `f7a8b9c0d1e2`, single base `692d4e5b740f`):
+- **Module-count pricing** (`7a0beea`) — per-module `monthly_price_paise`,
+  `compute_tenant_monthly_pricing`, `GET /operator/tenants/{id}/pricing`.
+- **Team chat** (`cac7f0c`) — staff channels/messages with membership + edit.
+- **Approvals foundation** (`7fab0be`) — generic approval request state machine
+  (PENDING/APPROVED/REJECTED/CANCELLED), admin-only decisions, no self-approval.
+- **Bank reconciliation** (`fec2aba`) — bank transaction ingestion with
+  (tenant,account,utr) duplicate protection + UTR-exact / unique-amount match
+  suggestions (no auto-posting).
+- **Brokers / channel partners** (`b3eaf04`) — broker registry + commission rollup.
+- **Tenant AI provider** (`25d9843`) — per-tenant AI provider config with
+  Fernet-encrypted keys and masked read-back; assistant falls back to central.
+- **Voice intelligence** (`4efa124`) — call transcription + AI summary with a
+  pluggable provider interface + deterministic fake (no real provider wired).
+- **Service desk** (`2803c19`+`17a466f`) — support tickets with SLA map, breach
+  queue, TCK MAX-sequence numbering, validated transitions.
+
 ### Documents engine — **[this session, commit `0e15689`]**
 Versioned, numbered, verifiable documents with deterministic PDFs.
 - `DocumentTemplate` (DEMAND_LETTER / RECEIPT / STATEMENT), versioned per tenant,
