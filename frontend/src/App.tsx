@@ -39,6 +39,7 @@ import { OpportunityPipelinePage } from "./customers/OpportunityPipelinePage";
 import { InventoryMapPage } from "./inventory/InventoryMapPage";
 import { InventoryUnitsPage } from "./inventory/InventoryUnitsPage";
 import { DocumentsPage } from "./documents/DocumentsPage";
+import { TeamChatPage } from "./teamchat/TeamChatPage";
 
 const SaleBookingsPage = lazy(() =>
   import("./admin/sales/SaleBookingsPage").then((module) => ({
@@ -314,6 +315,7 @@ export default function App() {
               <Route index element={<AdminOverviewPage />} />
               <Route path="overview" element={<AdminOverviewPage />} />
               <Route path="users" element={<UserManagementPage />} />
+              <Route path="teamchat" element={<TeamChatPage />} />
               <Route path="projects" element={<ProjectManagementPage />} />
               <Route path="customers" element={<CustomerDirectoryPage />} />
               <Route path="customers/:id" element={<Customer360Page />} />
@@ -376,6 +378,7 @@ export default function App() {
                 path="conversations"
                 element={<SalesConversationsPage />}
               />
+              <Route path="teamchat" element={<TeamChatPage />} />
               <Route path="visits" element={<SalesVisitsPage />} />
               <Route path="follow-ups" element={<SalesFollowUpsPage />} />
               <Route

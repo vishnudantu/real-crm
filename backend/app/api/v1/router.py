@@ -14,6 +14,7 @@ from app.modules.dashboard.router import router as dashboard_router
 from app.modules.documents.router import router as documents_router
 from app.modules.follow_ups.router import router as follow_ups_router
 from app.modules.handoffs.router import handoffs_router
+from app.modules.integrations.connections_router import router as integration_connections_router
 from app.modules.integrations.router import router as integrations_router
 from app.modules.inventory.router import router as inventory_router
 from app.modules.leads.router import router as leads_router
@@ -28,6 +29,7 @@ from app.modules.operator.router import router as operator_router
 from app.modules.projects.router import router as projects_router
 from app.modules.settings.router import settings_router
 from app.modules.tenancy.router import router as tenancy_router
+from app.modules.teamchat.router import router as teamchat_router
 from app.modules.users.router import router as users_router
 
 api_router = APIRouter()
@@ -52,11 +54,13 @@ api_router.include_router(tenancy_router)
 api_router.include_router(messaging_router)
 api_router.include_router(operator_router)
 api_router.include_router(connectors_router)
+api_router.include_router(integration_connections_router)
 api_router.include_router(integrations_router)
 api_router.include_router(inventory_router)
 api_router.include_router(billing_router)
 api_router.include_router(postsales_router)
 api_router.include_router(documents_router)
+api_router.include_router(teamchat_router)
 api_router.include_router(omnichannel_router)
 api_router.include_router(channel_webhook_router)
 api_router.include_router(widget_router)

@@ -62,6 +62,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: MessageSquare,
   },
   {
+    label: "Team Chat",
+    shortLabel: "Team",
+    to: "/sales/teamchat",
+    icon: MessageSquare,
+  },
+  {
     label: "Site Visits",
     shortLabel: "Visits",
     to: "/sales/visits",
@@ -102,7 +108,7 @@ export function SalesLayout() {
   const { user } = useSalesUser();
   const { branding } = useTenant();
   const location = useLocation();
-  const isConversations = location.pathname.startsWith("/sales/conversations");
+  const isConversations = location.pathname.startsWith("/sales/conversations") || location.pathname.startsWith("/sales/teamchat");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const shouldReduceMotion = useReducedMotion();
