@@ -51,6 +51,13 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
     ],
   },
   {
+    label: "Customers",
+    items: [
+      { label: "Customer Directory", shortLabel: "Directory", to: "/admin/customers" },
+      { label: "Opportunity Pipeline", shortLabel: "Opportunities", to: "/admin/opportunities" },
+    ],
+  },
+  {
     label: "Team",
     items: [{ label: "User Management", shortLabel: "Users", to: "/admin/users" }],
   },
