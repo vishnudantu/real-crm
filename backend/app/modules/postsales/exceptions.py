@@ -35,6 +35,19 @@ class InstallmentNotFoundError(HTTPException):
         super().__init__(status.HTTP_404_NOT_FOUND, "Installment not found.")
 
 
+class ReceiptNotFoundError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(status.HTTP_404_NOT_FOUND, "Receipt not found.")
+
+
+class ReceiptAlreadyVoidedError(HTTPException):
+    def __init__(self, reason: str) -> None:
+        super().__init__(
+            status.HTTP_409_CONFLICT,
+            f"Receipt is already voided. Original reason: {reason or 'No reason recorded.'}",
+        )
+
+
 class ReceiptAmountExceedsOutstandingError(HTTPException):
     def __init__(self) -> None:
         super().__init__(

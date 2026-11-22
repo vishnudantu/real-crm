@@ -209,6 +209,13 @@ class Receipt(TenantOwned, Base):
         DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Corrections preserve the immutable original row and exclude it from live
+    # totals only after this audit metadata is set. The amount never changes.
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    voided_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class BrokerCommission(TenantOwned, Base):
