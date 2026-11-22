@@ -8,8 +8,10 @@ import {
   Hourglass,
   LoaderCircle,
   LockOpen,
+  Pencil,
   ShieldCheck,
   Timer,
+  Trash2,
   X,
 } from "lucide-react";
 import { useModalFocus } from "../shared/useModalFocus";
@@ -39,6 +41,7 @@ import {
   HoldForBuyerDialog,
   ReleaseHoldDialog,
 } from "./HoldActionDialogs";
+import { DeleteUnitDialog, EditUnitDialog } from "./UnitEditDialogs";
 
 interface UnitDetailDrawerProps {
   unitId: string;
@@ -46,7 +49,7 @@ interface UnitDetailDrawerProps {
   onChanged: (message: string) => void | Promise<void>;
 }
 
-type DialogKind = "hold" | "extend" | "release" | "convert" | null;
+type DialogKind = "hold" | "extend" | "release" | "convert" | "edit" | "delete" | null;
 
 export function UnitDetailDrawer({ unitId, onClose, onChanged }: UnitDetailDrawerProps) {
   const { user } = useAdminUser();
@@ -204,6 +207,17 @@ export function UnitDetailDrawer({ unitId, onClose, onChanged }: UnitDetailDrawe
           </div>
           <div className="flex items-center gap-2">
             {status && <StatusBadge status={status} />}
+            {isAdmin && unit && (
+              <button
+                type="button"
+                onClick={() => setDialog("edit")}
+                aria-label={`Edit unit ${unit.internal_code}`}
+                title="Edit unit details"
+                className="rounded-lg p-1.5 text-charcoal/50 hover:bg-charcoal/5 hover:text-charcoal"
+              >
+                <Pencil aria-hidden="true" className="size-4" />
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -489,6 +503,27 @@ export function UnitDetailDrawer({ unitId, onClose, onChanged }: UnitDetailDrawe
                   </ol>
                 )}
               </section>
+
+              {status === "DRAFT" && isAdmin && (
+                <section aria-label="Delete draft unit" className="rounded-xl border border-rose-200 bg-rose-50/50 p-4">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-charcoal">
+                    <Trash2 aria-hidden="true" className="size-4 text-rose-600" />
+                    Delete draft unit
+                  </h3>
+                  <p className="mt-1 text-xs leading-relaxed text-charcoal/60">
+                    Permanently removes this draft unit. The server only allows it when the unit
+                    has no hold and no linked booking; otherwise cancel the unit instead.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setDialog("delete")}
+                    className={`${inventoryDangerButton} mt-3`}
+                  >
+                    <Trash2 aria-hidden="true" className="size-3.5" />
+                    Delete unit
+                  </button>
+                </section>
+              )}
             </>
           )}
         </div>
@@ -519,6 +554,30 @@ export function UnitDetailDrawer({ unitId, onClose, onChanged }: UnitDetailDrawe
           unitCode={unit.internal_code}
           onClose={() => setDialog(null)}
           onSuccess={handleHoldSuccess}
+        />
+      )}
+      {unit && dialog === "edit" && (
+        <EditUnitDialog
+          unit={unit}
+          onClose={() => setDialog(null)}
+          onSaved={async (_updated, message) => {
+            setDialog(null);
+            await invalidate();
+            await refetch();
+            await onChanged(message);
+          }}
+        />
+      )}
+      {unit && dialog === "delete" && (
+        <DeleteUnitDialog
+          unit={unit}
+          onClose={() => setDialog(null)}
+          onDeleted={async (message) => {
+            setDialog(null);
+            await invalidate();
+            await onChanged(message);
+            onClose();
+          }}
         />
       )}
     </div>

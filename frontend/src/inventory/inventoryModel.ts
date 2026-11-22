@@ -93,6 +93,25 @@ export interface UnitCreateRequest {
   rera_disclosure_json: Record<string, unknown>;
 }
 
+/**
+ * Mutable unit fields for the edit dialog. ``internal_code`` and ``status``
+ * are intentionally absent: the code is the canonical identity and status
+ * changes go through the state-machine transition endpoint only.
+ */
+export interface UnitUpdateRequest {
+  configuration?: string | null;
+  floor?: string | null;
+  position?: string | null;
+  tower?: string | null;
+  carpet_area_sqft?: number | null;
+  built_up_area_sqft?: number | null;
+  plot_number?: string | null;
+  facing?: string | null;
+  views?: string | null;
+  saleable?: boolean;
+  rera_disclosure_json?: Record<string, unknown>;
+}
+
 export interface BulkRowResult {
   index: number;
   internal_code: string;

@@ -6,6 +6,8 @@ import type {
   CreatePaymentPlanPayload,
   CreateReceiptPayload,
   CreateSaleBookingPayload,
+  InstallmentItem,
+  InstallmentUpdatePayload,
   PaymentPlanItem,
   ReceiptItem,
   SaleBookingItem,
@@ -98,6 +100,25 @@ export function sendDemandLetter(installmentId: string): Promise<void> {
     `/sales-bookings/installments/${installmentId}/demand-letter`,
     SESSION,
     { method: "POST" },
+  );
+}
+
+export function updateInstallment(
+  installmentId: string,
+  payload: InstallmentUpdatePayload,
+): Promise<InstallmentItem> {
+  return bearerRequest<InstallmentItem>(
+    `/sales-bookings/installments/${installmentId}`,
+    SESSION,
+    { method: "PATCH", body: JSON.stringify(payload) },
+  );
+}
+
+export function voidReceipt(receiptId: string, reason: string): Promise<ReceiptItem> {
+  return bearerRequest<ReceiptItem>(
+    `/sales-bookings/receipts/${receiptId}/void`,
+    SESSION,
+    { method: "POST", body: JSON.stringify({ reason }) },
   );
 }
 

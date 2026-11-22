@@ -11,6 +11,7 @@ import type {
   UnitEventSource,
   UnitListResponse,
   UnitStatus,
+  UnitUpdateRequest,
 } from "./inventoryModel";
 
 function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -49,6 +50,22 @@ export function bulkCreateUnits(
     `/inventory/units/bulk?dry_run=${dryRun ? "true" : "false"}`,
     { method: "POST", body: JSON.stringify({ rows }) },
   );
+}
+
+export function updateUnit(
+  unitId: string,
+  payload: UnitUpdateRequest,
+): Promise<Unit> {
+  return request<Unit>(`/inventory/units/${unitId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Only the backend's guarded DRAFT-only delete; progressed units must use the
+ * state machine, and the server enforces that regardless of what is sent. */
+export function deleteUnit(unitId: string): Promise<void> {
+  return request<void>(`/inventory/units/${unitId}`, { method: "DELETE" });
 }
 
 export interface TransitionUnitPayload {

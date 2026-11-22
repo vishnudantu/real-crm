@@ -2,9 +2,11 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
+  Ban,
   FileText,
   LoaderCircle,
   Mail,
+  Pencil,
   Plus,
   RefreshCw,
   X,
@@ -20,6 +22,7 @@ import {
 import type {
   CommissionItem,
   InstallmentItem,
+  ReceiptItem,
   SaleBookingItem,
   SaleStatus,
 } from "./salesBookingModel";
@@ -48,6 +51,7 @@ import {
   IssueDemandLetterCell,
   ReceiptDocumentCell,
 } from "./DocumentsActionsCell";
+import { EditInstallmentDialog, VoidReceiptDialog } from "./LedgerCorrectionDialogs";
 
 interface BookingLedgerDrawerProps {
   booking: SaleBookingItem;
@@ -70,6 +74,8 @@ export function BookingLedgerDrawer({
   const [createCommissionOpen, setCreateCommissionOpen] = useState(false);
   const [receiptInstallment, setReceiptInstallment] =
     useState<InstallmentItem | null>(null);
+  const [editInstallment, setEditInstallment] = useState<InstallmentItem | null>(null);
+  const [voidReceiptTarget, setVoidReceiptTarget] = useState<ReceiptItem | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -408,6 +414,17 @@ export function BookingLedgerDrawer({
                                   outstandingPaise={row.outstanding_paise}
                                   onIssued={onChanged}
                                 />
+                                {row.status !== "WAIVED" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditInstallment(row)}
+                                    className={saleSecondaryButton}
+                                    aria-label={`Edit installment ${row.milestone}`}
+                                  >
+                                    <Pencil aria-hidden="true" className="size-3" />
+                                    <span>Edit</span>
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -427,39 +444,67 @@ export function BookingLedgerDrawer({
                   </div>
                 ) : (
                   <ul className="mt-3 space-y-2">
-                    {receipts.map((receipt) => (
-                      <li
-                        key={receipt.id}
-                        className={`${saleCardClasses} flex items-start justify-between gap-3 p-3`}
-                      >
-                        <div>
-                          <p className="text-xs font-semibold text-charcoal">
-                            {receipt.receipt_number}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-charcoal/60">
-                            {receipt.channel}
-                            {receipt.reference ? ` · ${receipt.reference}` : ""}
-                          </p>
-                          <p className="mt-0.5 text-[10.5px] text-charcoal/55">
-                            Paid {formatDateTime(receipt.paid_at)}
-                          </p>
-                          {receipt.notes && (
-                            <p className="mt-1 text-[11px] text-charcoal/70">
-                              {receipt.notes}
+                    {receipts.map((receipt) => {
+                      const isVoided = receipt.voided_at !== null;
+                      return (
+                        <li
+                          key={receipt.id}
+                          className={`${saleCardClasses} flex items-start justify-between gap-3 p-3 ${isVoided ? "opacity-75" : ""}`}
+                        >
+                          <div>
+                            <p className="flex items-center gap-2 text-xs font-semibold text-charcoal">
+                              {receipt.receipt_number}
+                              {isVoided && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                                  <Ban aria-hidden="true" className="size-3" />
+                                  Voided
+                                </span>
+                              )}
                             </p>
-                          )}
-                        </div>
-                        <div className="flex shrink-0 flex-col items-end gap-2">
-                          <p className="text-sm font-semibold text-emerald-700">
-                            {formatInr(receipt.amount_paise)}
-                          </p>
-                          <ReceiptDocumentCell
-                            receiptId={receipt.id}
-                            onIssued={onChanged}
-                          />
-                        </div>
-                      </li>
-                    ))}
+                            <p className="mt-0.5 text-[11px] text-charcoal/60">
+                              {receipt.channel}
+                              {receipt.reference ? ` · ${receipt.reference}` : ""}
+                            </p>
+                            <p className="mt-0.5 text-[10.5px] text-charcoal/55">
+                              Paid {formatDateTime(receipt.paid_at)}
+                            </p>
+                            {receipt.notes && (
+                              <p className="mt-1 text-[11px] text-charcoal/70">
+                                {receipt.notes}
+                              </p>
+                            )}
+                            {isVoided && (
+                              <p className="mt-1 text-[11px] leading-relaxed text-rose-700">
+                                Voided {formatDateTime(receipt.voided_at)}
+                                {receipt.void_reason ? ` — ${receipt.void_reason}` : ""}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 flex-col items-end gap-2">
+                            <p className={`text-sm font-semibold ${isVoided ? "text-charcoal/45 line-through" : "text-emerald-700"}`}>
+                              {formatInr(receipt.amount_paise)}
+                            </p>
+                            {!isVoided && (
+                              <>
+                                <ReceiptDocumentCell
+                                  receiptId={receipt.id}
+                                  onIssued={onChanged}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setVoidReceiptTarget(receipt)}
+                                  className={saleDangerButton}
+                                  aria-label={`Void receipt ${receipt.receipt_number}`}
+                                >
+                                  <Ban aria-hidden="true" className="size-3" />
+                                  <span>Void</span>
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </section>
@@ -604,6 +649,39 @@ export function BookingLedgerDrawer({
             setReceiptInstallment(null);
             await refetch();
             await onChanged("Receipt recorded.");
+          }}
+        />
+      )}
+
+      {editInstallment && (
+        <EditInstallmentDialog
+          installment={editInstallment}
+          onClose={() => setEditInstallment(null)}
+          onSaved={async (message) => {
+            setEditInstallment(null);
+            await queryClient.invalidateQueries({
+              queryKey: ["admin", "sale-bookings", booking.id, "ledger"],
+            });
+            await refetch();
+            await onChanged(message);
+          }}
+        />
+      )}
+
+      {voidReceiptTarget && (
+        <VoidReceiptDialog
+          receipt={voidReceiptTarget}
+          onClose={() => setVoidReceiptTarget(null)}
+          onVoided={async (message) => {
+            setVoidReceiptTarget(null);
+            await queryClient.invalidateQueries({
+              queryKey: ["admin", "sale-bookings", booking.id, "ledger"],
+            });
+            await queryClient.invalidateQueries({
+              queryKey: ["admin", "sale-bookings"],
+            });
+            await refetch();
+            await onChanged(message);
           }}
         />
       )}

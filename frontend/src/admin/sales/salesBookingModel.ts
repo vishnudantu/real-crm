@@ -101,6 +101,9 @@ export type ReceiptItem = {
   received_by_id: string | null;
   paid_at: string;
   notes: string | null;
+  voided_at: string | null;
+  voided_by_id: string | null;
+  void_reason: string | null;
 };
 
 export type CommissionItem = {
@@ -153,6 +156,17 @@ export type CreateCommissionPayload = {
 
 export type UpdateCommissionPayload = {
   status: CommissionStatus;
+};
+
+/**
+ * Operational corrections on an open installment. ``PAID`` and ``WAIVED`` are
+ * deliberately unreachable: the backend rejects them — PAID requires a receipt
+ * posting and WAIVED belongs to a future waiver workflow.
+ */
+export type InstallmentUpdatePayload = {
+  due_on?: string;
+  amount_paise?: number;
+  status?: Exclude<InstallmentStatus, "PAID" | "WAIVED">;
 };
 
 export const SALE_STATUSES: { value: SaleStatus; label: string }[] = [
