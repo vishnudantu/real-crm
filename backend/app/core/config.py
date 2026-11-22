@@ -155,6 +155,10 @@ class Settings(BaseSettings):
     leads_imap_pass: SecretStr | None = Field(default=None)
     leads_imap_mailbox: str = Field(default="INBOX")
     leads_imap_port: int = Field(default=993, ge=1, le=65535)
+    documents_storage_dir: str = Field(
+        default="documents",
+        description="Local document artifact directory; relative paths resolve from backend root.",
+    )
     razorpay_key_id: SecretStr | None = Field(default=None)
     razorpay_key_secret: SecretStr | None = Field(default=None)
     razorpay_webhook_secret: SecretStr | None = Field(default=None)

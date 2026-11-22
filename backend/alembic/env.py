@@ -22,6 +22,7 @@ from app.modules.connectors import models as connectors_models  # noqa: F401
 from app.modules.conversations import models as conversations_models  # noqa: F401
 from app.modules.customers import models as customers_models  # noqa: F401
 from app.modules.dashboard import models as dashboard_models  # noqa: F401
+from app.modules.documents import models as documents_models  # noqa: F401
 from app.modules.follow_ups import models as follow_ups_models  # noqa: F401
 from app.modules.handoffs import models as handoffs_models  # noqa: F401
 from app.modules.integrations import models as integrations_models  # noqa: F401
