@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select, text
@@ -34,8 +33,8 @@ def highest_ticket_sequence(session: Session, *, tenant_id: UUID) -> int:
     ).all()
     highest = 0
     for number in numbers:
-        _, _, digits = (number or "").rpartition("-")
-        if digits.isdigit():
+        value, _, digits = (number or "").rpartition("-")
+        if value == TICKET_PREFIX and digits.isdigit():
             highest = max(highest, int(digits))
     return highest
 
@@ -67,6 +66,3 @@ def comments_for_ticket(
         ).all()
     )
 
-
-def now_utc() -> datetime:
-    return datetime.now(UTC)
