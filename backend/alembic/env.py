@@ -23,6 +23,7 @@ from app.modules.conversations import models as conversations_models  # noqa: F4
 from app.modules.dashboard import models as dashboard_models  # noqa: F401
 from app.modules.follow_ups import models as follow_ups_models  # noqa: F401
 from app.modules.handoffs import models as handoffs_models  # noqa: F401
+from app.modules.integrations import models as integrations_models  # noqa: F401
 from app.modules.leads import models as leads_models  # noqa: F401
 from app.modules.messaging import models as messaging_models  # noqa: F401
 from app.modules.notifications import models as notifications_models  # noqa: F401

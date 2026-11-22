@@ -79,17 +79,22 @@ def map_meta_lead_fields(field_data: list[dict]) -> dict:
     }
 
 
-def fetch_meta_lead(leadgen_id: str, settings: Settings) -> dict:
-    """Fetch a Meta lead via Graph API; tests use recorded fixtures."""
+def fetch_meta_lead(
+    leadgen_id: str, settings: Settings, access_token: str | None = None
+) -> dict:
+    """Fetch a lead with a connection token, retaining the legacy fallback."""
 
     import httpx
 
-    token = settings.meta_page_access_token
+    configured_token = settings.meta_page_access_token
+    token = access_token or (
+        configured_token.get_secret_value() if configured_token is not None else None
+    )
     if token is None:
-        raise RuntimeError("META_PAGE_ACCESS_TOKEN is required to fetch Meta leads.")
+        raise RuntimeError("A Meta page access token is required to fetch leads.")
     response = httpx.get(
         f"https://graph.facebook.com/v21.0/{leadgen_id}",
-        params={"access_token": token.get_secret_value()},
+        params={"access_token": token},
         timeout=15.0,
     )
     response.raise_for_status()
