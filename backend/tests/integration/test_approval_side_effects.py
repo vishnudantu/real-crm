@@ -527,7 +527,7 @@ def test_migration_adds_and_drops_side_effect_columns_on_isolated_sqlite() -> No
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     assert migration.revision == "c8d9e0f1a2b3"
-    assert migration.down_revision == "f7a8b9c0d1e2"
+    assert migration.down_revision == "e9a0b1c2d3e4"
 
     engine = create_engine("sqlite+pysqlite:///:memory:")
     try:
