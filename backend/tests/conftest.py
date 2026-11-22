@@ -26,6 +26,10 @@ _TEST_ENVIRONMENT = {
     "CORS_ALLOWED_ORIGINS": '["http://testserver"]',
     "LOG_LEVEL": "WARNING",
     "JWT_SECRET_KEY": TEST_JWT_SECRET,
+    # Pinned so token issuer/audience can never drift from the developer's
+    # local .env: tests mint and validate against these exact values.
+    "JWT_ISSUER": "propflow-api",
+    "JWT_AUDIENCE": "propflow-clients",
     "ACCESS_TOKEN_EXPIRE_MINUTES": "30",
     # Disable SQLAlchemy C extension: it is not thread-safe for concurrent
     # access to the shared in-memory SQLite connection (StaticPool) used by the
