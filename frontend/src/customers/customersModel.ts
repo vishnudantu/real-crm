@@ -55,6 +55,79 @@ export interface ContactSearchResponse {
   normalized_phone: string | null;
 }
 
+/** POST /customers/contacts body — mirrors ContactCreateRequest. */
+export interface ContactCreatePayload {
+  display_name: string;
+  email: string | null;
+  phone: string | null;
+  primary_language: string;
+  notes: string | null;
+}
+
+/** POST /customers/contacts response: 201 created=true, 200 created=false. */
+export interface ContactCreateResponse {
+  contact: ContactDetail;
+  method: ContactMethod | null;
+  created: boolean;
+}
+
+/** PATCH /customers/contacts/{id} body — mirrors ContactUpdateRequest. */
+export interface ContactUpdatePayload {
+  display_name?: string;
+  primary_language?: string;
+  notes?: string | null;
+}
+
+export interface ContactCreateFormState {
+  displayName: string;
+  email: string;
+  phone: string;
+  primaryLanguage: string;
+  notes: string;
+}
+
+export type ContactFormErrors = Partial<Record<keyof ContactCreateFormState, string>>;
+
+/** Client mirror of the backend Field constraints for contact creation. */
+export function validateContactCreateForm(
+  form: ContactCreateFormState,
+): ContactFormErrors {
+  const errors: ContactFormErrors = {};
+  const name = form.displayName.trim();
+  if (name.length < 2) errors.displayName = "Name must be at least 2 characters.";
+  else if (name.length > 255) errors.displayName = "Name is at most 255 characters.";
+  const email = form.email.trim();
+  const phone = form.phone.trim();
+  if (!email && !phone) {
+    errors.email = "Provide at least one of email or phone.";
+    errors.phone = "Provide at least one of email or phone.";
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errors.email = "Enter a valid email address.";
+  }
+  if (phone && !/^\+?[0-9\s().-]{7,32}$/.test(phone)) {
+    errors.phone = "Phone may use digits, +, -, spaces, dots and parentheses.";
+  }
+  const language = form.primaryLanguage.trim();
+  if (language.length < 2 || language.length > 8) {
+    errors.primaryLanguage = "Language code must be 2–8 characters, e.g. en.";
+  }
+  if (form.notes.length > 5000) errors.notes = "Notes are at most 5,000 characters.";
+  return errors;
+}
+
+export function buildContactCreatePayload(
+  form: ContactCreateFormState,
+): ContactCreatePayload {
+  return {
+    display_name: form.displayName.trim(),
+    email: form.email.trim() || null,
+    phone: form.phone.trim() || null,
+    primary_language: form.primaryLanguage.trim().toLowerCase(),
+    notes: form.notes.trim() || null,
+  };
+}
+
 export interface Opportunity {
   id: string;
   contact_id: string;

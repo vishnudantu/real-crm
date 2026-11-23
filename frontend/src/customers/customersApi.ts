@@ -1,9 +1,13 @@
 import { clearSession, getSession } from "../auth/session";
 import { bearerRequest } from "../shared/apiRequest";
 import type {
+  Contact,
+  ContactCreatePayload,
+  ContactCreateResponse,
   ContactListResponse,
   ContactSearchPayload,
   ContactSearchResponse,
+  ContactUpdatePayload,
   Customer360Response,
   DuplicateSuggestionsResponse,
   MergeResponse,
@@ -34,6 +38,51 @@ export function searchCustomer(payload: ContactSearchPayload): Promise<ContactSe
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+/**
+ * POST /customers/contacts — idempotent by normalized email/phone.
+ * 201 returns created=true; 200 returns the existing contact with created=false.
+ */
+export function createContact(payload: ContactCreatePayload): Promise<ContactCreateResponse> {
+  return bearerRequest<ContactCreateResponse>("/customers/contacts", SESSION, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** PATCH /customers/contacts/{id} — display_name / primary_language / notes only. */
+export function updateContact(
+  contactId: string,
+  payload: ContactUpdatePayload,
+): Promise<Contact> {
+  return bearerRequest<Contact>(`/customers/contacts/${id(contactId)}`, SESSION, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface OpportunityCreatePayload {
+  project_id: string;
+  from_lead_id?: string | null;
+  owner_user_id?: string | null;
+  budget_min?: number | null;
+  budget_max?: number | null;
+  preferred_configuration?: string | null;
+  source?: string | null;
+  value_paise?: number | null;
+}
+
+/** POST /customers/{contactId}/opportunities — idempotent per lead. */
+export function openOpportunity(
+  contactId: string,
+  payload: OpportunityCreatePayload,
+): Promise<Opportunity> {
+  return bearerRequest<Opportunity>(
+    `/customers/${id(contactId)}/opportunities`,
+    SESSION,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
 }
 
 export function fetchCustomer(contactId: string): Promise<Customer360Response> {

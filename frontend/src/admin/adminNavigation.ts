@@ -24,6 +24,7 @@ interface NavigationGroupDefinition {
 const SETTINGS_CHILDREN: readonly NavigationDefinition[] = [
   { label: "Branding", shortLabel: "Branding", to: "/admin/settings/branding" },
   { label: "AI Assistant", shortLabel: "AI", to: "/admin/settings/ai" },
+  { label: "AI Providers", shortLabel: "AI Providers", to: "/admin/settings/ai-providers" },
   { label: "Languages", shortLabel: "Languages", to: "/admin/settings/languages" },
   { label: "Reminders", shortLabel: "Reminders", to: "/admin/settings/reminders" },
   { label: "Lead Assignment", shortLabel: "Assignment", to: "/admin/settings/assignment" },
@@ -48,6 +49,7 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
     items: [
       { label: "Projects & Fact Sheets", shortLabel: "Projects", to: "/admin/projects" },
       { label: "Site Visits & Slots", shortLabel: "Visits", to: "/admin/visits" },
+      { label: "Construction Progress", shortLabel: "Construction", to: "/admin/construction" },
     ],
   },
   {
@@ -55,6 +57,15 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
     items: [
       { label: "Customer Directory", shortLabel: "Directory", to: "/admin/customers" },
       { label: "Opportunity Pipeline", shortLabel: "Opportunities", to: "/admin/opportunities" },
+      { label: "Channel Partners", shortLabel: "Partners", to: "/admin/brokers" },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { label: "Approvals", shortLabel: "Approvals", to: "/admin/approvals" },
+      { label: "Service Desk", shortLabel: "Service Desk", to: "/admin/service-desk" },
+      { label: "Call Intelligence", shortLabel: "Call Intel", to: "/admin/call-intelligence" },
     ],
   },
   {
@@ -77,6 +88,7 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
       { label: "Analytics & Reports", shortLabel: "Analytics", to: "/admin/analytics", feature: "analytics" },
       { label: "Sales Bookings", shortLabel: "Bookings", to: "/admin/sales-bookings", feature: "post_sales" },
       { label: "Documents", shortLabel: "Documents", to: "/admin/documents" },
+      { label: "Bank Reconciliation", shortLabel: "Reconciliation", to: "/admin/reconciliation" },
     ],
   },
   {
