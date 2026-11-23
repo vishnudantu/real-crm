@@ -97,6 +97,17 @@ export function SalesConversationsPage() {
     }
   }, [selectedConversationId, conversations]);
 
+  // ── Deep link (?lead_id=...) from the My Day checklist ───────────────────
+  const [deepLinkParams] = useSearchParams();
+  const deepLinkLeadId = deepLinkParams.get("lead_id");
+  useEffect(() => {
+    if (!deepLinkLeadId) return;
+    const linked = conversations.find((conversation) => conversation.lead_id === deepLinkLeadId);
+    if (linked) {
+      handleSelectConversation(linked.id);
+    }
+  }, [deepLinkLeadId, conversations]);
+
   // ── Active conversation ───────────────────────────────────────────────────
   const activeConversation: SalesConversation | null = useMemo(() => {
     if (!selectedConversationId) return conversations[0] ?? null;

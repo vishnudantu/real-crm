@@ -128,6 +128,8 @@ import { SalesProfilePage } from "./sales/SalesProfilePage";
 import { SalesConversationsPage } from "./sales/SalesConversationsPage";
 import { SalesVisitsPage } from "./sales/SalesVisitsPage";
 import { SalesFollowUpsPage } from "./sales/SalesFollowUpsPage";
+import { SalesMyDayPage } from "./sales/SalesMyDayPage";
+import { WarRoomPage } from "./admin/WarRoomPage";
 import { LoaderCircle } from "lucide-react";
 
 const OperatorLoginPage = lazy(() =>
@@ -365,6 +367,7 @@ export default function App() {
             <Route element={<AdminLayout />}>
               <Route index element={<AdminOverviewPage />} />
               <Route path="overview" element={<AdminOverviewPage />} />
+              <Route path="war-room" element={<WarRoomPage />} />
               <Route path="users" element={<UserManagementPage />} />
               <Route path="teamchat" element={<TeamChatPage />} />
               <Route path="projects" element={<ProjectManagementPage />} />
@@ -476,6 +479,7 @@ export default function App() {
             <Route element={<SalesLayout />}>
               <Route index element={<SalesDashboardPage />} />
               <Route path="overview" element={<SalesDashboardPage />} />
+              <Route path="myday" element={<SalesMyDayPage />} />
               <Route path="leads" element={<SalesLeadsPage />} />
               <Route
                 path="conversations"

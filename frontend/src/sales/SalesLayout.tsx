@@ -13,6 +13,7 @@ import {
   Bell,
   CalendarDays,
   Check,
+  ClipboardCheck,
   Inbox,
   LayoutDashboard,
   ListChecks,
@@ -55,6 +56,7 @@ const NAV_ITEMS: NavItem[] = [
     exact: true,
   },
   { label: "My Leads", shortLabel: "Leads", to: "/sales/leads", icon: Users },
+  { label: "My Day", shortLabel: "My Day", to: "/sales/myday", icon: ClipboardCheck },
   {
     label: "Conversations",
     shortLabel: "Chats",

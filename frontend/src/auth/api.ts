@@ -1,6 +1,6 @@
 import { getSession } from "./session";
 
-export type RoleName = "BUYER" | "SALES_EXECUTIVE" | "ADMIN";
+export type RoleName = "BUYER" | "SALES_EXECUTIVE" | "MANAGER" | "ADMIN";
 
 export type AuthenticatedUser = {
   id: string;
@@ -54,12 +54,14 @@ export const API_BASE_URL = (
 
 const ROLE_HOME: Record<RoleName, string> = {
   ADMIN: "/admin",
+  MANAGER: "/admin/war-room",
   SALES_EXECUTIVE: "/sales",
   BUYER: "/buyer",
 };
 
 export const ROLE_LABEL: Record<RoleName, string> = {
   ADMIN: "Administrator",
+  MANAGER: "Manager",
   SALES_EXECUTIVE: "Sales executive",
   BUYER: "Buyer",
 };
@@ -84,8 +86,8 @@ export class ApiError extends Error {
 }
 
 export function roleFromName(value: string): RoleName | null {
-  if (value === "ADMIN" || value === "SALES_EXECUTIVE" || value === "BUYER") {
-    return value;
+  if (["ADMIN", "MANAGER", "SALES_EXECUTIVE", "BUYER"].includes(value)) {
+    return value as RoleName;
   }
   return null;
 }
@@ -167,7 +169,7 @@ export type ChangePasswordPayload = {
   confirmPassword: string;
 };
 
-async function authenticatedRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function authenticatedRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const session = getSession();
   if (!session?.accessToken) {
     throw new ApiError(401, "UNAUTHORIZED", "Active session required.");

@@ -7,7 +7,7 @@ import { Logo } from "../components/Logo";
 import { useAdminUser } from "./AdminAuthGuard";
 import { useTenant } from "../tenant/TenantProvider";
 import { useFeatures } from "../features/FeaturesProvider";
-import { buildAdminMobileNav, buildAdminNav } from "./adminNavigation";
+import { buildAdminMobileNav, buildAdminNav, buildManagerNav } from "./adminNavigation";
 import type { AdminNavigationItem } from "./adminNavigation";
 import { adminNavigationIcon } from "./adminNavigationIcons";
 import { AdminNavigationSections } from "./AdminNavigationSections";
@@ -37,8 +37,14 @@ export function AdminLayout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const shouldReduceMotion = useReducedMotion();
-  const groups = useMemo(() => buildAdminNav(features), [features]);
-  const mobilePrimary = useMemo(() => buildAdminMobileNav(features), [features]);
+  const groups = useMemo(
+    () => user.role.name === "MANAGER" ? buildManagerNav() : buildAdminNav(features),
+    [features, user.role.name],
+  );
+  const mobilePrimary = useMemo(
+    () => user.role.name === "MANAGER" ? groups[0]?.items ?? [] : buildAdminMobileNav(features),
+    [features, groups, user.role.name],
+  );
   const items = useMemo(() => groups.flatMap((group) => group.items), [groups]);
   const currentItem = items
     .flatMap((item) => [...(item.children ?? []), item])

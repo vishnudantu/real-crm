@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   AudioLines,
+  Activity,
   BarChart3,
   Bell,
   BookCheck,
@@ -32,6 +33,7 @@ import {
 
 const ICONS_BY_PATH: Readonly<Record<string, LucideIcon>> = {
   "/admin": LayoutDashboard,
+  "/admin/war-room": Activity,
   "/admin/inbox": Inbox,
   "/admin/notifications": Bell,
   "/admin/projects": Building2,

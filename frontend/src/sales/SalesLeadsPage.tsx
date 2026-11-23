@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -537,6 +538,14 @@ export function SalesLeadsPage() {
   }, []);
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+
+  const deepLinkedLeadId = useSearchParams().get("lead_id");
+  useEffect(() => {
+    if (!deepLinkedLeadId || leadsQuery.isPending) return;
+    const linked = rows.find((row) => row.id === deepLinkedLeadId);
+    if (!linked) return;
+    openLead(linked);
+  }, [deepLinkedLeadId, leadsQuery.isPending, rows, openLead]);
 
   const resetFilters = useCallback(() => {
     setSearch("");

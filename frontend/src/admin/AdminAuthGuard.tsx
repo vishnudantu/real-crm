@@ -54,10 +54,10 @@ export function AdminAuthGuard() {
       const role = roleFromName(profile.role.name);
 
       if (
-        role !== "ADMIN" ||
+        role !== "ADMIN" && role !== "MANAGER" ||
         !profileMatchesTenant(profile.tenant_id, branding.id)
       ) {
-        if (role && role !== "ADMIN") {
+        if (role && role !== "ADMIN" && role !== "MANAGER") {
           navigate(homeForRole(role), { replace: true });
         } else {
           clearSession();
