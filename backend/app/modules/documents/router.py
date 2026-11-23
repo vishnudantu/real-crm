@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import AdminUser, require_roles
+from app.modules.auth.dependencies import require_permission
 from app.modules.documents import service
 from app.modules.documents.schemas import (
     DocumentDeliveryResponse,
@@ -30,21 +30,27 @@ from app.modules.documents.schemas import (
     DocumentResponse,
     DocumentVoidRequest,
 )
-from app.modules.users.models import RoleName, User
+from app.modules.users.models import User
+from app.modules.users.permissions import (
+    DOCUMENTS_ISSUE,
+    DOCUMENTS_PREPARE,
+    DOCUMENTS_READ,
+)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
-DocumentStaffUser = Annotated[
-    User,
-    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
-]
+# Staff read surfaces map to documents.read, the approval-gated prepare flow
+# to documents.prepare, and issue/void to documents.issue.
+DocumentStaffUser = Annotated[User, Depends(require_permission(DOCUMENTS_READ))]
+DocumentPreparer = Annotated[User, Depends(require_permission(DOCUMENTS_PREPARE))]
+DocumentIssuer = Annotated[User, Depends(require_permission(DOCUMENTS_ISSUE))]
 
 
 @router.post("/demand-letters/{installment_id}", response_model=DocumentResponse,
              status_code=status.HTTP_201_CREATED)
 def issue_demand_letter_endpoint(
     installment_id: UUID,
-    admin: AdminUser,
+    admin: DocumentIssuer,
     db: Annotated[Session, Depends(get_db)],
 ):
     """Generate (or return the already-issued) demand-letter document for one
@@ -57,7 +63,7 @@ def issue_demand_letter_endpoint(
              status_code=status.HTTP_201_CREATED)
 def prepare_demand_letter_endpoint(
     installment_id: UUID,
-    staff: DocumentStaffUser,
+    staff: DocumentPreparer,
     db: Annotated[Session, Depends(get_db)],
 ):
     """P0.3 approval gate: generate the letter as PENDING_REVIEW and open a
@@ -77,7 +83,7 @@ def prepare_demand_letter_endpoint(
              status_code=status.HTTP_201_CREATED)
 def issue_receipt_pdf_endpoint(
     receipt_id: UUID,
-    admin: AdminUser,
+    admin: DocumentIssuer,
     db: Annotated[Session, Depends(get_db)],
 ):
     """Generate the PDF receipt document for an existing ledger receipt."""
@@ -131,7 +137,7 @@ def download_document_endpoint(
 def void_document_endpoint(
     document_id: UUID,
     payload: DocumentVoidRequest,
-    admin: AdminUser,
+    admin: DocumentIssuer,
     db: Annotated[Session, Depends(get_db)],
 ):
     """Void an issued document. The stored bytes remain for audit; downloads

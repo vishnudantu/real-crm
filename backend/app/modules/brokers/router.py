@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import AdminUser, require_roles
+from app.modules.auth.dependencies import require_permission
 from app.modules.brokers import service
 from app.modules.brokers.models import BrokerStatus
 from app.modules.brokers.schemas import (
@@ -23,20 +23,21 @@ from app.modules.brokers.schemas import (
     BrokerResponse,
     BrokerUpdateRequest,
 )
-from app.modules.users.models import RoleName, User
+from app.modules.users.models import User
+from app.modules.users.permissions import BROKERS_READ, BROKERS_WRITE
 
 router = APIRouter(prefix="/brokers", tags=["brokers"])
 
-BrokerStaffUser = Annotated[
-    User,
-    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
-]
+# Read/performance surfaces map to brokers.read; register/edit to
+# brokers.write.
+BrokerStaffUser = Annotated[User, Depends(require_permission(BROKERS_READ))]
+BrokerWriter = Annotated[User, Depends(require_permission(BROKERS_WRITE))]
 
 
 @router.post("", response_model=BrokerResponse, status_code=status.HTTP_201_CREATED)
 def register_broker_endpoint(
     payload: BrokerCreateRequest,
-    admin: AdminUser,
+    admin: BrokerWriter,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.register_broker(db, actor=admin, **payload.model_dump())
@@ -71,7 +72,7 @@ def get_broker_endpoint(
 def update_broker_endpoint(
     broker_id: UUID,
     payload: BrokerUpdateRequest,
-    admin: AdminUser,
+    admin: BrokerWriter,
     db: Annotated[Session, Depends(get_db)],
 ):
     fields = payload.model_dump(exclude_unset=True)

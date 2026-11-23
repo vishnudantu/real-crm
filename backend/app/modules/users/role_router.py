@@ -11,12 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.modules.auth.dependencies import AdminUser
 from app.modules.users import role_service
-from app.modules.users.permissions import (
-    INVENTORY_HOLDS,
-    INVENTORY_READ,
-    INVENTORY_WRITE,
-    PERMISSIONS,
-)
+from app.modules.users.permissions import ENABLED_PERMISSION_KEYS, PERMISSIONS
 from app.modules.users.role_schemas import (
     CustomRoleCreateRequest,
     CustomRoleListResponse,
@@ -28,10 +23,6 @@ from app.modules.users.role_schemas import (
 
 router = APIRouter(prefix="/roles", tags=["custom roles"])
 
-# Only these registry entries currently replace a router's legacy role gate.
-# Other grantable keys are preparatory UI metadata, not access grants yet.
-PILOT_PERMISSIONS = frozenset({INVENTORY_READ, INVENTORY_WRITE, INVENTORY_HOLDS})
-
 
 @router.get("/permissions", response_model=PermissionListResponse)
 def get_permission_registry(_: AdminUser) -> PermissionListResponse:
@@ -41,7 +32,7 @@ def get_permission_registry(_: AdminUser) -> PermissionListResponse:
             area=item.area,
             description=item.description,
             grantable=item.grantable,
-            enabled=item.key in PILOT_PERMISSIONS,
+            enabled=item.key in ENABLED_PERMISSION_KEYS,
         )
         for item in sorted(PERMISSIONS, key=lambda entry: (entry.area, entry.key))
     ]

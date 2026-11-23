@@ -33,6 +33,11 @@ from app.modules.conversations.service import (
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
+# All conversation endpoints are built-in CurrentUser surfaces: buyers create,
+# close, message, and request handoffs on their own conversations while staff
+# operate on the same endpoints. The service scopes visibility per role
+# identity, so no staff-only permission key sits in front of these buyer flows.
+
 
 @router.post(
     "",

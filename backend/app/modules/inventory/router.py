@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.modules.approvals.schemas import ApprovalRequestResponse
 from app.modules.approvals.service import request_unit_discount
-from app.modules.auth.dependencies import CurrentUser, require_permission, require_roles
+from app.modules.auth.dependencies import CurrentUser, require_permission
 from app.modules.inventory import repository, service
 from app.modules.inventory.exceptions import UnitNotFoundError
 from app.modules.inventory.schemas import (
@@ -33,8 +33,9 @@ from app.modules.inventory.schemas import (
     UnitStatusUpdateRequest,
     UnitUpdateRequest,
 )
-from app.modules.users.models import RoleName, User
+from app.modules.users.models import User
 from app.modules.users.permissions import (
+    APPROVALS_REQUEST,
     INVENTORY_HOLDS,
     INVENTORY_READ,
     INVENTORY_WRITE,
@@ -42,16 +43,13 @@ from app.modules.users.permissions import (
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
-# Inventory is the first permission-gated module. Built-in ADMIN/MANAGER/
-# SALES_EXECUTIVE access remains mapped by the permission registry; custom
-# roles receive only the explicit grants below. Other modules keep require_roles.
+# Built-in ADMIN/MANAGER/SALES_EXECUTIVE access maps through the permission
+# registry; custom roles receive only their explicit grants.
 InventoryManager = Annotated[User, Depends(require_permission(INVENTORY_WRITE))]
 
 HoldWriter = Annotated[User, Depends(require_permission(INVENTORY_HOLDS))]
 
-DiscountRequester = Annotated[
-    User, Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE))
-]
+DiscountRequester = Annotated[User, Depends(require_permission(APPROVALS_REQUEST))]
 
 
 @router.post("/units", response_model=UnitResponse, status_code=status.HTTP_201_CREATED)

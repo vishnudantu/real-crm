@@ -143,6 +143,24 @@ def require_permission(permission: str) -> Callable[..., User]:
     return _require_permission
 
 
+def has_permission(user: User, permission: str) -> bool:
+    """Non-raising permission check mirroring :func:`require_permission`.
+
+    Service-layer capability checks call this so a custom role's explicit
+    grants work the same as the router-level gate, while built-in roles keep
+    their registry legacy mapping. Row-level scoping must never use this —
+    it stays keyed on the built-in base role identity.
+    """
+
+    definition = PERMISSION_REGISTRY.get(permission)
+    if definition is None or not definition.grantable:
+        return False
+    if user.custom_role_id is not None:
+        granted = user.permission_keys
+        return permission in granted and granted <= PERMISSION_REGISTRY.keys()
+    return user.role.name in definition.legacy_roles
+
+
 CurrentUser = Annotated[User, Depends(get_current_user)]
 AdminUser = Annotated[User, Depends(require_roles(RoleName.ADMIN))]
 ManagerUser = Annotated[

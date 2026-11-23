@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import AdminUser, require_roles
+from app.modules.auth.dependencies import require_permission
 from app.modules.construction import service
 from app.modules.construction.schemas import (
     CertificationRequest,
@@ -18,15 +18,15 @@ from app.modules.construction.schemas import (
     ProgressCreateRequest,
     ProjectProgressSummary,
 )
-from app.modules.users.models import RoleName, User
+from app.modules.users.models import User
+from app.modules.users.permissions import CONSTRUCTION_READ, CONSTRUCTION_WRITE
 
 router = APIRouter(prefix="/construction", tags=["construction"])
 
-# Reads are open to all staff; writes stay admin-only.
-ConstructionReader = Annotated[
-    User,
-    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
-]
+# Reads stay staff-visible via construction.read; admin-only writes map to
+# construction.write.
+ConstructionReader = Annotated[User, Depends(require_permission(CONSTRUCTION_READ))]
+ConstructionWriter = Annotated[User, Depends(require_permission(CONSTRUCTION_WRITE))]
 
 
 @router.post(
@@ -37,7 +37,7 @@ ConstructionReader = Annotated[
 )
 def create_milestone_endpoint(
     payload: MilestoneCreateRequest,
-    admin: AdminUser,
+    admin: ConstructionWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> MilestoneResponse:
     return service.create_milestone(
@@ -90,7 +90,7 @@ def project_progress_endpoint(
 def add_progress_endpoint(
     milestone_id: UUID,
     payload: ProgressCreateRequest,
-    admin: AdminUser,
+    admin: ConstructionWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> MilestoneResponse:
     milestone, _update = service.add_progress(
@@ -111,7 +111,7 @@ def add_progress_endpoint(
 def certify_milestone_endpoint(
     milestone_id: UUID,
     payload: CertificationRequest,
-    admin: AdminUser,
+    admin: ConstructionWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> MilestoneResponse:
     milestone = service.certify_milestone(

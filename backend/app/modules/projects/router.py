@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import AdminUser, CurrentUser
+from app.modules.auth.dependencies import CurrentUser, require_permission
 from app.modules.projects.models import FactStatus, ProjectStatus
 from app.modules.projects.schemas import (
     FactCreateRequest,
@@ -41,8 +41,14 @@ from app.modules.projects.service import (
     update_fact,
     update_project,
 )
+from app.modules.users.models import User
+from app.modules.users.permissions import PROJECTS_WRITE
 
 router = APIRouter()
+
+# Admin-only write surfaces (projects, facts, metrics, versions) map to
+# projects.write. Project/fact browsing stays open CurrentUser (buyer flow).
+ProjectWriter = Annotated[User, Depends(require_permission(PROJECTS_WRITE))]
 
 
 @router.post(
@@ -54,7 +60,7 @@ router = APIRouter()
 )
 def create_project_endpoint(
     payload: ProjectCreateRequest,
-    admin: AdminUser,
+    admin: ProjectWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> ProjectResponse:
     """Create a project in the requested initial lifecycle state."""
@@ -98,7 +104,7 @@ def list_projects_endpoint(
     summary="Get project and fact metrics (admin only)",
 )
 def get_project_metrics_endpoint(
-    admin: AdminUser,
+    admin: ProjectWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> ProjectMetricsResponse:
     """Return aggregate project and fact sheet metrics. Requires the ADMIN role."""
@@ -131,7 +137,7 @@ def get_project_endpoint(
 def update_project_endpoint(
     project_id: UUID,
     payload: ProjectUpdateRequest,
-    admin: AdminUser,
+    admin: ProjectWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> ProjectResponse:
     """Update project details or move it through an allowed status change."""
@@ -152,7 +158,7 @@ def update_project_endpoint(
 )
 def delete_project_endpoint(
     project_id: UUID,
-    admin: AdminUser,
+    admin: ProjectWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> ProjectDeletionResponse:
     """Delete a project and all of its facts.
@@ -174,7 +180,7 @@ def delete_project_endpoint(
 def create_fact_endpoint(
     project_id: UUID,
     payload: FactCreateRequest,
-    admin: AdminUser,
+    admin: ProjectWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> FactResponse:
     """Create an independently editable draft fact."""
@@ -243,7 +249,7 @@ def get_fact_endpoint(
 def update_fact_endpoint(
     fact_id: UUID,
     payload: FactUpdateRequest,
-    admin: AdminUser,
+    admin: ProjectWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> FactResponse:
     """Edit a draft fact or stage a reviewed edit on an approved fact."""
@@ -259,7 +265,7 @@ def update_fact_endpoint(
 )
 def approve_fact_endpoint(
     fact_id: UUID,
-    admin: AdminUser,
+    admin: ProjectWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> FactResponse:
     """Approve a draft or publish the pending edit of an approved fact."""
@@ -275,7 +281,7 @@ def approve_fact_endpoint(
 )
 def reject_fact_endpoint(
     fact_id: UUID,
-    admin: AdminUser,
+    admin: ProjectWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> FactResponse:
     """Discard pending edits or unpublish an approved fact."""
@@ -291,7 +297,7 @@ def reject_fact_endpoint(
 )
 def delete_fact_endpoint(
     fact_id: UUID,
-    admin: AdminUser,
+    admin: ProjectWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> FactDeletionResponse:
     """Delete a fact and its version history. Requires the ADMIN role."""
@@ -307,7 +313,7 @@ def delete_fact_endpoint(
 )
 def list_fact_versions_endpoint(
     fact_id: UUID,
-    admin: AdminUser,
+    admin: ProjectWriter,
     db: Annotated[Session, Depends(get_db)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,

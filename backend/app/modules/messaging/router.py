@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import AdminUser
+from app.modules.auth.dependencies import require_permission
 from app.modules.messaging import service
 from app.modules.messaging.schemas import (
     MessageDeliveryListResponse,
@@ -24,14 +24,21 @@ from app.modules.messaging.schemas import (
     TriggerRuleResponse,
     TriggerRuleUpdateRequest,
 )
+from app.modules.users.models import User
+from app.modules.users.permissions import MESSAGING_CONFIGURE, MESSAGING_SEND
 
 router = APIRouter(prefix="/messaging", tags=["messaging"])
+
+# Template/rule/delivery configuration maps to messaging.configure; sending
+# tests maps to messaging.send.
+MessagingAdmin = Annotated[User, Depends(require_permission(MESSAGING_CONFIGURE))]
+MessagingSender = Annotated[User, Depends(require_permission(MESSAGING_SEND))]
 
 
 @router.post("/templates", response_model=MessageTemplateResponse, status_code=status.HTTP_201_CREATED)
 def create_template_endpoint(
     payload: MessageTemplateCreateRequest,
-    admin: AdminUser,
+    admin: MessagingAdmin,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.create_template(db, actor=admin, payload=payload)
@@ -39,7 +46,7 @@ def create_template_endpoint(
 
 @router.get("/templates", response_model=MessageTemplateListResponse)
 def list_templates_endpoint(
-    admin: AdminUser,
+    admin: MessagingAdmin,
     db: Annotated[Session, Depends(get_db)],
 ):
     items = service.list_templates(db, actor=admin)
@@ -50,7 +57,7 @@ def list_templates_endpoint(
 def update_template_endpoint(
     template_id: UUID,
     payload: MessageTemplateUpdateRequest,
-    admin: AdminUser,
+    admin: MessagingAdmin,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.update_template(db, actor=admin, template_id=template_id, payload=payload)
@@ -59,7 +66,7 @@ def update_template_endpoint(
 @router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_template_endpoint(
     template_id: UUID,
-    admin: AdminUser,
+    admin: MessagingAdmin,
     db: Annotated[Session, Depends(get_db)],
 ) -> None:
     service.delete_template(db, actor=admin, template_id=template_id)
@@ -68,7 +75,7 @@ def delete_template_endpoint(
 @router.post("/rules", response_model=TriggerRuleResponse, status_code=status.HTTP_201_CREATED)
 def create_rule_endpoint(
     payload: TriggerRuleCreateRequest,
-    admin: AdminUser,
+    admin: MessagingAdmin,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.create_rule(db, actor=admin, payload=payload)
@@ -76,7 +83,7 @@ def create_rule_endpoint(
 
 @router.get("/rules", response_model=TriggerRuleListResponse)
 def list_rules_endpoint(
-    admin: AdminUser,
+    admin: MessagingAdmin,
     db: Annotated[Session, Depends(get_db)],
 ):
     items = service.list_rules(db, actor=admin)
@@ -87,7 +94,7 @@ def list_rules_endpoint(
 def update_rule_endpoint(
     rule_id: UUID,
     payload: TriggerRuleUpdateRequest,
-    admin: AdminUser,
+    admin: MessagingAdmin,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.update_rule(db, actor=admin, rule_id=rule_id, payload=payload)
@@ -96,7 +103,7 @@ def update_rule_endpoint(
 @router.delete("/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_rule_endpoint(
     rule_id: UUID,
-    admin: AdminUser,
+    admin: MessagingAdmin,
     db: Annotated[Session, Depends(get_db)],
 ) -> None:
     service.delete_rule(db, actor=admin, rule_id=rule_id)
@@ -104,7 +111,7 @@ def delete_rule_endpoint(
 
 @router.get("/deliveries", response_model=MessageDeliveryListResponse)
 def list_deliveries_endpoint(
-    admin: AdminUser,
+    admin: MessagingAdmin,
     db: Annotated[Session, Depends(get_db)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -119,7 +126,7 @@ def list_deliveries_endpoint(
 @router.post("/send-test", response_model=MessageDeliveryResponse, status_code=status.HTTP_201_CREATED)
 def send_test_endpoint(
     payload: SendTestRequest,
-    admin: AdminUser,
+    admin: MessagingSender,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.send_test(db, actor=admin, payload=payload)
@@ -127,7 +134,7 @@ def send_test_endpoint(
 
 @router.post("/seed-lifecycle")
 def seed_lifecycle_endpoint(
-    admin: AdminUser,
+    admin: MessagingAdmin,
     db: Annotated[Session, Depends(get_db)],
 ):
     """Seed default lifecycle templates + trigger rules for the caller's tenant.

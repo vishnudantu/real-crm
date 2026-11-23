@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import AdminUser, require_roles
+from app.modules.auth.dependencies import require_permission
 from app.modules.reconciliation import service
 from app.modules.reconciliation.schemas import (
     BankTransactionResponse,
@@ -18,17 +18,21 @@ from app.modules.reconciliation.schemas import (
     SuggestMatchesResponse,
     TransactionListResponse,
 )
-from app.modules.users.models import RoleName, User
+from app.modules.users.models import User
+from app.modules.users.permissions import RECONCILIATION_READ, RECONCILIATION_WRITE
 
 router = APIRouter(prefix="/reconciliation", tags=["reconciliation"])
 
-ReadUser = Annotated[User, Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE))]
+# Staff read surfaces map to reconciliation.read; admin-only writes map to
+# reconciliation.write.
+ReadUser = Annotated[User, Depends(require_permission(RECONCILIATION_READ))]
+WriteUser = Annotated[User, Depends(require_permission(RECONCILIATION_WRITE))]
 
 
 @router.post("/ingest", response_model=IngestResponse, status_code=status.HTTP_201_CREATED)
 def ingest_endpoint(
     payload: IngestRequest,
-    admin: AdminUser,
+    admin: WriteUser,
     db: Annotated[Session, Depends(get_db)],
 ):
     rows = [row.model_dump() for row in payload.rows]
@@ -39,7 +43,7 @@ def ingest_endpoint(
 
 @router.post("/suggest-matches", response_model=SuggestMatchesResponse)
 def suggest_matches_endpoint(
-    admin: AdminUser,
+    admin: WriteUser,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.suggest_matches(db, actor=admin)
@@ -70,7 +74,7 @@ def list_unmatched_endpoint(
 @router.post("/transactions/{transaction_id}/ignore", response_model=BankTransactionResponse)
 def ignore_transaction_endpoint(
     transaction_id: UUID,
-    admin: AdminUser,
+    admin: WriteUser,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.ignore_transaction(db, actor=admin, transaction_id=transaction_id)

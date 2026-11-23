@@ -9,8 +9,13 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import AdminUser, CurrentUser, require_roles
-from app.modules.users.models import RoleName, User
+from app.modules.auth.dependencies import CurrentUser, require_permission
+from app.modules.users.models import User
+from app.modules.users.permissions import (
+    POSTSALES_READ,
+    POSTSALES_VOID_RECEIPT,
+    POSTSALES_WRITE,
+)
 from app.modules.postsales import cancellation, repository, service
 from app.modules.postsales.schemas import (
     BrokerCommissionCreateRequest,
@@ -34,11 +39,20 @@ from app.modules.postsales.schemas import (
 
 router = APIRouter(prefix="/sales-bookings", tags=["post-sales"])
 
+# Admin-only writes map to postsales.write, receipt voiding to
+# postsales.void_receipt, and staff receipt reads to postsales.read.
+# Detail/ledger stay open CurrentUser surfaces (buyer ledger reads).
+PostSalesWriter = Annotated[User, Depends(require_permission(POSTSALES_WRITE))]
+PostSalesReader = Annotated[User, Depends(require_permission(POSTSALES_READ))]
+ReceiptVoider = Annotated[
+    User, Depends(require_permission(POSTSALES_VOID_RECEIPT))
+]
+
 
 @router.post("", response_model=SaleBookingResponse, status_code=status.HTTP_201_CREATED)
 def create_booking_endpoint(
     payload: SaleBookingCreateRequest,
-    admin: AdminUser,
+    admin: PostSalesWriter,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.create_booking(db, actor=admin, payload=payload)
@@ -46,7 +60,7 @@ def create_booking_endpoint(
 
 @router.get("", response_model=SaleBookingListResponse)
 def list_bookings_endpoint(
-    admin: AdminUser,
+    admin: PostSalesWriter,
     db: Annotated[Session, Depends(get_db)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -88,7 +102,7 @@ def get_booking_endpoint(
 def update_booking_endpoint(
     booking_id: UUID,
     payload: SaleBookingUpdateRequest,
-    admin: AdminUser,
+    admin: PostSalesWriter,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.update_booking(db, actor=admin, booking_id=booking_id, payload=payload)
@@ -98,7 +112,7 @@ def update_booking_endpoint(
 def cancel_booking_endpoint(
     booking_id: UUID,
     payload: SaleBookingCancelRequest,
-    admin: AdminUser,
+    admin: PostSalesWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> SaleBookingCancelResponse:
     """Cancel a sale booking under the tenant policy: fee, refund-due, unit release.
@@ -146,7 +160,7 @@ def ledger_endpoint(
 def create_plan_endpoint(
     booking_id: UUID,
     payload: PaymentPlanCreateRequest,
-    admin: AdminUser,
+    admin: PostSalesWriter,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.create_plan(db, actor=admin, booking_id=booking_id, payload=payload)
@@ -155,7 +169,7 @@ def create_plan_endpoint(
 @router.post("/receipts", response_model=ReceiptResponse, status_code=status.HTTP_201_CREATED)
 def record_receipt_endpoint(
     payload: ReceiptCreateRequest,
-    admin: AdminUser,
+    admin: PostSalesWriter,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.record_receipt(db, actor=admin, payload=payload)
@@ -164,7 +178,7 @@ def record_receipt_endpoint(
 @router.get("/receipts/{receipt_id}", response_model=ReceiptResponse)
 def get_receipt_endpoint(
     receipt_id: UUID,
-    sales_user: Annotated[User, Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE))],
+    sales_user: PostSalesReader,
     db: Annotated[Session, Depends(get_db)],
 ):
     from app.modules.postsales.exceptions import ReceiptNotFoundError
@@ -179,7 +193,7 @@ def get_receipt_endpoint(
 def void_receipt_endpoint(
     receipt_id: UUID,
     payload: ReceiptVoidRequest,
-    admin: AdminUser,
+    admin: ReceiptVoider,
     db: Annotated[Session, Depends(get_db)],
 ):
     """Reverse a receipt's financial effect; the original row stays for audit."""
@@ -191,7 +205,7 @@ def void_receipt_endpoint(
 def update_installment_endpoint(
     installment_id: UUID,
     payload: InstallmentUpdateRequest,
-    admin: AdminUser,
+    admin: PostSalesWriter,
     db: Annotated[Session, Depends(get_db)],
 ):
     installment = service.update_installment(
@@ -221,7 +235,7 @@ def update_installment_endpoint(
 )
 def send_demand_letter_endpoint(
     installment_id: UUID,
-    admin: AdminUser,
+    admin: PostSalesWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> None:
     service.send_demand_letter(db, actor=admin, installment_id=installment_id)
@@ -231,7 +245,7 @@ def send_demand_letter_endpoint(
 def create_commission_endpoint(
     booking_id: UUID,
     payload: BrokerCommissionCreateRequest,
-    admin: AdminUser,
+    admin: PostSalesWriter,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.create_commission(db, actor=admin, booking_id=booking_id, payload=payload)
@@ -241,7 +255,7 @@ def create_commission_endpoint(
 def update_commission_endpoint(
     commission_id: UUID,
     payload: BrokerCommissionUpdateRequest,
-    admin: AdminUser,
+    admin: PostSalesWriter,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.update_commission(

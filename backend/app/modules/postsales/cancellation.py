@@ -282,7 +282,10 @@ def cancel_booking(
     refund-due remainder lands in the returned breakdown and the audit log.
     """
 
-    if not _is_admin(session, actor):
+    from app.modules.auth.dependencies import has_permission
+    from app.modules.users.permissions import POSTSALES_WRITE
+
+    if not _is_admin(session, actor) and not has_permission(actor, POSTSALES_WRITE):
         raise InsufficientPermissionsError()
 
     booking = repository.get_booking(session, booking_id, tenant_id=actor.tenant_id)

@@ -162,7 +162,10 @@ def certify_milestone(
     letter only once ``status == CERTIFIED``. No letter is issued here.
     """
 
-    if not _is_admin(session, actor):
+    from app.modules.auth.dependencies import has_permission
+    from app.modules.users.permissions import CONSTRUCTION_WRITE
+
+    if not _is_admin(session, actor) and not has_permission(actor, CONSTRUCTION_WRITE):
         from app.modules.users.exceptions import InsufficientPermissionsError
 
         raise InsufficientPermissionsError()

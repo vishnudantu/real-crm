@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import require_roles
+from app.modules.auth.dependencies import require_permission
 from app.modules.teamchat import service
 from app.modules.teamchat.schemas import (
     TeamChannelCreateRequest,
@@ -24,12 +24,11 @@ from app.modules.teamchat.schemas import (
     TeamStaffUserResponse,
     TeamUnreadResponse,
 )
-from app.modules.users.models import RoleName, User
+from app.modules.users.models import User
+from app.modules.users.permissions import TEAMCHAT_USE
 
 router = APIRouter(prefix="/teamchat", tags=["teamchat"])
-StaffUser = Annotated[
-    User, Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE))
-]
+StaffUser = Annotated[User, Depends(require_permission(TEAMCHAT_USE))]
 Database = Annotated[Session, Depends(get_db)]
 
 

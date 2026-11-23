@@ -10,12 +10,13 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.modules.users.models import RoleName, User
+from app.modules.users.models import User
+from app.modules.users.permissions import APPROVALS_REQUEST
 
 from app.db.session import get_db
 from app.modules.approvals.schemas import ApprovalRequestResponse
 from app.modules.approvals.service import request_booking_car
-from app.modules.auth.dependencies import CurrentUser, require_roles
+from app.modules.auth.dependencies import CurrentUser, require_permission
 from app.modules.bookings.models import BookingStatus
 from app.modules.bookings.schemas import (
     AvailableSlotListResponse,
@@ -59,9 +60,12 @@ from app.modules.bookings.service import (
 slots_router = APIRouter(prefix="/slots", tags=["slots"])
 bookings_router = APIRouter(prefix="/bookings", tags=["bookings"])
 
+# Only the approval-wired car-request had a legacy staff gate; every other
+# slot/booking/evidence endpoint is a built-in CurrentUser surface whose
+# service scopes buyer and staff visibility (buyer booking flows stay open).
 CarRequestStaffUser = Annotated[
     User,
-    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
+    Depends(require_permission(APPROVALS_REQUEST)),
 ]
 
 

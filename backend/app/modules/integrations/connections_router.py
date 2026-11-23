@@ -23,7 +23,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.modules.auth.dependencies import AdminUser
+from app.modules.auth.dependencies import require_permission
+from app.modules.users.models import User
+from app.modules.users.permissions import INTEGRATIONS_MANAGE
 from app.modules.integrations.connection_service import (
     ACTIVE_CONNECTION,
     connect_google_manually,
@@ -74,6 +76,8 @@ from app.modules.users import repository as users_repository
 from app.modules.users.models import RoleName, User
 
 router = APIRouter(prefix="/integrations/connect", tags=["integrations"])
+
+IntegrationManager = Annotated[User, Depends(require_permission(INTEGRATIONS_MANAGE))]
 
 _CREDENTIAL_ECHO = re.compile(
     r"(?i)(access_token|client_secret|refresh_token|code)=([^&\s'\"]{4})[^&\s'\"]*"
@@ -148,7 +152,7 @@ def _authorization_redirect(
 
 @router.get("/providers", response_model=list[ProviderConfigurationResponse])
 def get_provider_configuration(
-    actor: AdminUser,
+    actor: IntegrationManager,
     settings: Annotated[Settings, Depends(get_settings)],
 ):
     """Describe real OAuth availability, including the exact missing env names."""
@@ -157,7 +161,7 @@ def get_provider_configuration(
 
 @router.get("/meta/connect-url", response_model=ConnectUrlResponse)
 def meta_connect_url(
-    actor: AdminUser,
+    actor: IntegrationManager,
     settings: Annotated[Settings, Depends(get_settings)],
 ):
     """JSON form of /meta/start so the SPA can trigger the browser redirect."""
@@ -178,7 +182,7 @@ def meta_connect_url(
 
 @router.get("/meta/start")
 def start_meta(
-    actor: AdminUser,
+    actor: IntegrationManager,
     settings: Annotated[Settings, Depends(get_settings)],
 ):
     return _authorization_redirect(META_PROVIDER, actor, settings)
@@ -218,7 +222,7 @@ def meta_callback(
 
 @router.get("/meta/pages", response_model=MetaPagesResponse)
 def get_meta_pages(
-    actor: AdminUser,
+    actor: IntegrationManager,
     db: Annotated[Session, Depends(get_db)],
     connection_id: UUID,
 ):
@@ -232,7 +236,7 @@ def get_meta_pages(
 @router.post("/meta/finalize", response_model=MetaFinalizeResponse)
 def finalize_meta_connection(
     payload: MetaFinalizeRequest,
-    actor: AdminUser,
+    actor: IntegrationManager,
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ):
@@ -250,7 +254,7 @@ def finalize_meta_connection(
 @router.get("/meta/status/{connection_id}", response_model=ConnectionStatusResponse)
 def meta_status(
     connection_id: UUID,
-    actor: AdminUser,
+    actor: IntegrationManager,
     db: Annotated[Session, Depends(get_db)],
 ):
     connection = get_owned_connection(db, connection_id=connection_id, tenant_id=actor.tenant_id)
@@ -261,7 +265,7 @@ def meta_status(
 
 @router.post("/meta/test", response_model=ConnectionTestResponse)
 def test_meta_connection(
-    actor: AdminUser,
+    actor: IntegrationManager,
     db: Annotated[Session, Depends(get_db)],
     connection_id: Annotated[UUID, Query()],
 ):
@@ -280,7 +284,7 @@ def test_meta_connection(
 
 @router.get("/google/connect-url", response_model=ConnectUrlResponse)
 def google_connect_url(
-    actor: AdminUser,
+    actor: IntegrationManager,
     settings: Annotated[Settings, Depends(get_settings)],
 ):
     missing = missing_oauth_settings(settings, GOOGLE_PROVIDER)
@@ -300,7 +304,7 @@ def google_connect_url(
 
 @router.get("/google/start")
 def start_google(
-    actor: AdminUser,
+    actor: IntegrationManager,
     settings: Annotated[Settings, Depends(get_settings)],
 ):
     return _authorization_redirect(GOOGLE_PROVIDER, actor, settings)
@@ -340,7 +344,7 @@ def google_callback(
 @router.post("/google/finalize", response_model=IntegrationConnectionResponse)
 def finalize_google_connection(
     payload: GoogleFinalizeRequest,
-    actor: AdminUser,
+    actor: IntegrationManager,
     db: Annotated[Session, Depends(get_db)],
 ):
     return finalize_google(
@@ -355,7 +359,7 @@ def finalize_google_connection(
 @router.post("/google/manual", response_model=IntegrationConnectionResponse)
 def manual_google_connection(
     payload: GoogleManualConnectionRequest,
-    actor: AdminUser,
+    actor: IntegrationManager,
     db: Annotated[Session, Depends(get_db)],
 ):
     """Offline-conversion credentials when PropFlow has no shared OAuth app yet."""
@@ -365,7 +369,7 @@ def manual_google_connection(
 @router.get("/google/status/{connection_id}", response_model=ConnectionStatusResponse)
 def google_status(
     connection_id: UUID,
-    actor: AdminUser,
+    actor: IntegrationManager,
     db: Annotated[Session, Depends(get_db)],
 ):
     connection = get_owned_connection(db, connection_id=connection_id, tenant_id=actor.tenant_id)
@@ -376,7 +380,7 @@ def google_status(
 
 @router.post("/google/test", response_model=ConnectionTestResponse)
 def test_google_ads_connection(
-    actor: AdminUser,
+    actor: IntegrationManager,
     db: Annotated[Session, Depends(get_db)],
     connection_id: Annotated[UUID, Query()],
 ):
@@ -395,7 +399,7 @@ def test_google_ads_connection(
 @router.delete("/connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 def revoke_provider_connection(
     connection_id: UUID,
-    actor: AdminUser,
+    actor: IntegrationManager,
     db: Annotated[Session, Depends(get_db)],
 ) -> None:
     revoke_connection(db, actor=actor, connection_id=connection_id)
