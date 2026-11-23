@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.modules.operator import control_plane, feature_service, features, pricing, service
+from app.modules.operator import control_plane, feature_service, features, pricing, revenue, service
 from app.modules.operator.dependencies import (
     CurrentOperator,
     get_current_operator,
@@ -30,6 +30,7 @@ from app.modules.operator.schemas import (
     PlanCreateRequest,
     PlanResponse,
     PlanUpdateRequest,
+    RevenueSummaryResponse,
     TenantConfigPatchRequest,
     TenantConfigResponse,
     TenantCreateRequest,
@@ -295,6 +296,19 @@ def update_plan(
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.update_plan(db, operator=operator, plan_id=plan_id, payload=payload)
+
+
+@router.get("/revenue/summary", response_model=RevenueSummaryResponse)
+def revenue_summary(
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.REVENUE_READ))],
+    db: Annotated[Session, Depends(get_db)],
+    months: int = 6,
+):
+    """Platform revenue command centre: MRR/ARR, invoice trend, failures,
+    expansion signals, and renewals due in the next 30 days (read-only)."""
+
+    payload = revenue.revenue_summary(db, months=months)
+    return RevenueSummaryResponse.model_validate(payload)
 
 
 @router.post("/tenants/{tenant_id}/deployments", response_model=TenantDeploymentResponse, status_code=status.HTTP_201_CREATED)

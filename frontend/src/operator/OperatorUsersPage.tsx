@@ -51,6 +51,7 @@ const PERMISSIONS: { value: OperatorPermission; label: string }[] = [
   { value: "deployments.write", label: "Request deployments" },
   { value: "operators.manage", label: "Manage operator accounts" },
   { value: "audit.read", label: "Read audit logs" },
+  { value: "revenue.read", label: "Read revenue command centre" },
 ];
 
 const operatorSchema = z.object({

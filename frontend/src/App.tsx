@@ -110,6 +110,11 @@ const ConstructionPage = lazy(() =>
     default: module.ConstructionPage,
   })),
 );
+const CockpitPage = lazy(() =>
+  import("./admin/executive/CockpitPage").then((module) => ({
+    default: module.CockpitPage,
+  })),
+);
 const BrokersPage = lazy(() =>
   import("./brokers/BrokersPage").then((module) => ({
     default: module.BrokersPage,
@@ -187,6 +192,11 @@ const OperatorTenantDetailPage = lazy(() =>
 const OperatorPlansPage = lazy(() =>
   import("./operator/OperatorPlansPage").then((module) => ({
     default: module.OperatorPlansPage,
+  })),
+);
+const RevenuePage = lazy(() =>
+  import("./operator/RevenuePage").then((module) => ({
+    default: module.RevenuePage,
   })),
 );
 const OperatorUsersPage = lazy(() =>
@@ -356,6 +366,14 @@ export default function App() {
                 }
               />
               <Route
+                path="revenue"
+                element={
+                  <OperatorRouteGuard permission="revenue.read">
+                    <RevenuePage />
+                  </OperatorRouteGuard>
+                }
+              />
+              <Route
                 path="operators"
                 element={
                   <OperatorRouteGuard permission="operators.manage">
@@ -396,6 +414,14 @@ export default function App() {
               <Route path="inventory/sun-facing" element={<SunFacingPage />} />
               <Route path="visits" element={<VisitManagementPage />} />
               <Route path="analytics" element={<AnalyticsDashboardPage />} />
+              <Route
+                path="cockpit"
+                element={
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <CockpitPage />
+                  </Suspense>
+                }
+              />
               <Route
                 path="inbox"
                 element={
