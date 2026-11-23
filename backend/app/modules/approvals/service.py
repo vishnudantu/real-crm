@@ -104,6 +104,10 @@ def request_approval(
     """
 
     if approver_id is not None:
+        if approver_id == actor.id:
+            # A designated approver who IS the requesting actor recreates the
+            # self-approval hole at creation time; reject it before persisting.
+            raise SelfApprovalError()
         approver = users_repository.get_user_by_id(
             session, approver_id, tenant_id=actor.tenant_id
         )
@@ -126,6 +130,24 @@ def request_approval(
     )
     session.add(request)
     session.flush()
+    # Audit trail: the designated approver (and the reference) are recorded
+    # with the request. flush-only here, so the row commits atomically with the
+    # request whether this function or the caller owns the commit.
+    from app.modules.settings import service as settings_service
+
+    settings_service.log_admin_action(
+        session,
+        actor=actor,
+        action="APPROVAL_REQUEST_CREATED",
+        resource_type="APPROVAL_REQUEST",
+        resource_id=str(request.id),
+        details={
+            "request_type": request_type,
+            "reference_type": reference_type,
+            "reference_id": str(reference_id),
+            "approver_id": str(approver_id) if approver_id is not None else None,
+        },
+    )
     if commit:
         session.commit()
         session.refresh(request)
@@ -249,6 +271,10 @@ def decide(
         raise ApprovalRequestNotPendingError()
     if request.requested_by_id == actor.id:
         raise SelfApprovalError()
+    if request.approver_id is not None and request.approver_id != actor.id:
+        # A designated approver was named at creation; only that admin may
+        # decide. When no approver was named, any admin (checked above) can.
+        raise ApprovalDecisionForbiddenError()
     decided_at = datetime.now(UTC)
     # Wired pairs: side effect first, validating the entity exists BEFORE the
     # guarded update; both flush into one transaction that _transition commits.

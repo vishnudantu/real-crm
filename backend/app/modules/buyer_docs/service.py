@@ -48,9 +48,15 @@ def _category_value(category: BuyerDocumentCategory | str) -> str:
 
 
 def _check_actor_tenant(actor: User, tenant_id: UUID) -> None:
-    _require_staff(actor)
+    """Tenant scope first, role second: a cross-tenant read is always 404.
+
+    Raising the 403 staff guard before the tenant comparison would tell an
+    out-of-tenant actor that the resource exists but their role is wrong,
+    instead of the truthful "nothing here for your tenant".
+    """
     if actor.tenant_id != tenant_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyer document resource not found.")
+    _require_staff(actor)
 
 
 def _status_value(value: BuyerDocumentStatus | DocumentRequestStatus | str | None) -> str | None:

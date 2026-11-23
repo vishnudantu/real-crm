@@ -999,11 +999,13 @@ def upload_visit_evidence(
     Only staff (admin or assigned sales executive) may upload; buyers may not.
     Content type and size are validated at the boundary. If the DB write fails,
     the stored bytes are removed so no orphan artifact remains.
+
+    The tenant-scoped booking lookup runs BEFORE the buyer-role error, so a
+    booking id from another tenant answers 404 (indistinguishable from
+    deleted) instead of 403, which would confirm the booking exists elsewhere.
     """
     from app.modules.bookings import evidence_storage
 
-    if actor.role.name == RoleName.BUYER.value:
-        raise InsufficientPermissionsError()
     if content_type not in evidence_storage.ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -1013,6 +1015,13 @@ def upload_visit_evidence(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty evidence file.")
     if len(contents) > evidence_storage.MAX_EVIDENCE_BYTES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Evidence file is too large.")
+
+    if repository.get_booking_by_id(
+        session, booking_id, tenant_id=actor.tenant_id
+    ) is None:
+        raise BookingNotFoundError()
+    if actor.role.name == RoleName.BUYER.value:
+        raise InsufficientPermissionsError()
 
     booking = _get_visible_booking(session, actor=actor, booking_id=booking_id, for_update=True)
 

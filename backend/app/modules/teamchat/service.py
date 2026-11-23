@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 from datetime import UTC, datetime
 from uuid import UUID
@@ -33,6 +34,23 @@ from app.modules.users.models import Role, RoleName, User
 
 STAFF_ROLES = (RoleName.ADMIN.value, RoleName.SALES_EXECUTIVE.value)
 DEFAULT_PAGE_SIZE = 50
+DIRECT_NAME_PREFIX = "dm-"
+_DIRECT_NAME_HASH_LENGTH = 32
+
+
+def _direct_channel_name(user_a: UUID, user_b: UUID) -> str:
+    """Deterministic, relationship-free name for a 1:1 direct channel.
+
+    The channel used to embed both user ids ("dm-{actor}-{recipient}"), which
+    leaked who messages whom to anything that can read channel rows or the
+    create-channel 409 (an exact-name collision revealed the pair). A hash of
+    the id pair keeps (tenant, name) uniqueness and pair-stable reuse without
+    printing the ids themselves.
+    """
+
+    first, second = sorted((str(user_a), str(user_b)))
+    digest = hashlib.sha256(f"{first}:{second}".encode("utf-8")).hexdigest()
+    return f"{DIRECT_NAME_PREFIX}{digest[:_DIRECT_NAME_HASH_LENGTH]}"
 
 
 def _staff_response(user: User | None) -> TeamStaffUserResponse | None:
@@ -261,6 +279,8 @@ def create_direct(session: Session, *, actor: User, user_id: UUID) -> TeamChanne
     recipient = _tenant_staff(session, tenant_id=actor.tenant_id, user_ids=[user_id])[0]
     if recipient.id == actor.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose another staff member for a direct chat.")
+    # Reuse path 1 (legacy continuity): a DIRECT channel both members are on,
+    # including rows created before the name stopped embedding user ids.
     own_memberships = select(TeamChannelMember.channel_id).where(
         TeamChannelMember.tenant_id == actor.tenant_id,
         TeamChannelMember.user_id == actor.id,
@@ -270,28 +290,54 @@ def create_direct(session: Session, *, actor: User, user_id: UUID) -> TeamChanne
         TeamChannelMember.channel_id.in_(own_memberships),
         TeamChannelMember.user_id == recipient.id,
     )
-    channels = list(session.scalars(
+    legacy = list(session.scalars(
         select(TeamChannel).where(
             TeamChannel.tenant_id == actor.tenant_id,
             TeamChannel.kind == TeamChannelKind.DIRECT.value,
             TeamChannel.id.in_(pair_memberships),
-        ).order_by(TeamChannel.created_at)
+        ).order_by(TeamChannel.created_at, TeamChannel.id)
     ).all())
-    for channel in channels:
+    for channel in legacy:
         if _membership(
             session, tenant_id=actor.tenant_id, channel_id=channel.id, user_id=actor.id
         ) is not None:
-            join_channel(session, actor=actor, channel_id=channel.id)
             unread = _unread_counts(session, tenant_id=actor.tenant_id, user_id=actor.id)
             return _channel_with_members(
                 session, channel=channel, unread=unread.get(channel.id, 0)
             )
+    # Reuse path 2: the pair-stable name exists even if the actor left it.
+    channel_name = _direct_channel_name(actor.id, recipient.id)
+    channel = session.scalar(
+        select(TeamChannel).where(
+            TeamChannel.tenant_id == actor.tenant_id,
+            TeamChannel.kind == TeamChannelKind.DIRECT.value,
+            TeamChannel.name == channel_name,
+        )
+    )
+    if channel is not None:
+        return join_channel(session, actor=actor, channel_id=channel.id)
     channel = TeamChannel(
-        tenant_id=actor.tenant_id, name=f"dm-{actor.id}-{recipient.id}",
+        tenant_id=actor.tenant_id, name=channel_name,
         kind=TeamChannelKind.DIRECT.value, created_by=actor.id,
     )
     session.add(channel)
-    session.flush()
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        # Concurrent creation of the same pair: reuse the winning row.
+        session.rollback()
+        existing = session.scalar(
+            select(TeamChannel).where(
+                TeamChannel.tenant_id == actor.tenant_id,
+                TeamChannel.kind == TeamChannelKind.DIRECT.value,
+                TeamChannel.name == channel_name,
+            )
+        )
+        if existing is None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "A channel with this name already exists."
+            ) from exc
+        return join_channel(session, actor=actor, channel_id=existing.id)
     for member_id in (actor.id, recipient.id):
         session.add(TeamChannelMember(
             tenant_id=actor.tenant_id, channel_id=channel.id, user_id=member_id,
@@ -335,6 +381,42 @@ def leave_channel(session: Session, *, actor: User, channel_id: UUID) -> None:
     session.commit()
 
 
+def _members_by_channel(
+    session: Session, *, tenant_id: UUID, channel_ids: list[UUID]
+) -> dict[UUID, list[TeamChannelMemberResponse]]:
+    """Batch-load member profiles for the supplied channels (no N+1).
+
+    Direct-channel display names are resolved client-side from the peer's
+    profile, so the list payload must carry members for those channels now
+    that the channel name no longer embeds user ids.
+    """
+
+    if not channel_ids:
+        return {}
+    rows = session.execute(
+        select(TeamChannelMember, User)
+        .join(User, User.id == TeamChannelMember.user_id)
+        .where(
+            TeamChannelMember.tenant_id == tenant_id,
+            TeamChannelMember.channel_id.in_(channel_ids),
+            User.tenant_id == tenant_id,
+        )
+        .order_by(TeamChannelMember.joined_at, TeamChannelMember.id)
+    ).all()
+    grouped: dict[UUID, list[TeamChannelMemberResponse]] = {}
+    for member, user in rows:
+        grouped.setdefault(member.channel_id, []).append(
+            TeamChannelMemberResponse(
+                user_id=member.user_id,
+                role=member.role,
+                joined_at=member.joined_at,
+                last_read_at=member.last_read_at,
+                user=_staff_response(user),
+            )
+        )
+    return grouped
+
+
 def list_channels(session: Session, *, actor: User) -> tuple[list[TeamChannelResponse], int]:
     channels = list(session.scalars(
         select(TeamChannel)
@@ -348,10 +430,17 @@ def list_channels(session: Session, *, actor: User) -> tuple[list[TeamChannelRes
     ).all())
     unread = _unread_counts(session, tenant_id=actor.tenant_id, user_id=actor.id)
     member_counts = _member_count_map(session, tenant_id=actor.tenant_id)
+    direct_ids = [
+        channel.id for channel in channels if channel.kind == TeamChannelKind.DIRECT.value
+    ]
+    direct_members = _members_by_channel(
+        session, tenant_id=actor.tenant_id, channel_ids=direct_ids
+    )
     items = [
         _channel_response(
             channel, unread=unread.get(channel.id, 0),
             member_count=member_counts.get(channel.id, 0),
+            members=direct_members.get(channel.id, []),
         )
         for channel in channels
     ]

@@ -190,6 +190,60 @@ def test_buyer_cannot_upload_evidence(
         get_settings.cache_clear()
 
 
+def test_cross_tenant_buyer_gets_404_before_role_error(
+    test_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Tenant-scoped lookup precedes the buyer-role error: 404, never 403.
+
+    A 403 here would confirm to the outsider tenant that the booking id
+    exists; a 404 keeps foreign bookings indistinguishable from deleted ones.
+    """
+    monkeypatch.setenv("VISIT_EVIDENCE_STORAGE_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    try:
+        from types import SimpleNamespace
+
+        from app.modules.bookings.exceptions import BookingNotFoundError
+        from app.modules.users.exceptions import InsufficientPermissionsError
+        with test_session_factory() as session:
+            _tenant, foreign_admin, _project, lead, slot = _fixture(session)
+            foreign_booking = _booking(session, foreign_admin, lead, slot)
+        with test_session_factory() as session:
+            # A buyer in a DIFFERENT tenant probing the foreign booking id.
+            outsider_buyer = SimpleNamespace(
+                id=uuid4(), tenant_id=uuid4(),
+                role=SimpleNamespace(name=RoleName.BUYER.value),
+            )
+            with pytest.raises(BookingNotFoundError) as exc:
+                service.upload_visit_evidence(
+                    session, actor=outsider_buyer, booking_id=foreign_booking.id,
+                    contents=PNG_BYTES, content_type="image/png",
+                )
+            assert exc.value.status_code == 404
+            # Sanity: an unknown id for a STAFF actor in that tenant is 404 too.
+            outsider_admin = SimpleNamespace(
+                id=uuid4(), tenant_id=outsider_buyer.tenant_id,
+                role=SimpleNamespace(name=RoleName.ADMIN.value),
+            )
+            with pytest.raises(BookingNotFoundError):
+                service.upload_visit_evidence(
+                    session, actor=outsider_admin, booking_id=foreign_booking.id,
+                    contents=PNG_BYTES, content_type="image/png",
+                )
+            # And the same-tenant buyer still receives the role error (403).
+            same_tenant_buyer = SimpleNamespace(
+                id=uuid4(), tenant_id=foreign_admin.tenant_id,
+                role=SimpleNamespace(name=RoleName.BUYER.value),
+            )
+            with pytest.raises(InsufficientPermissionsError):
+                service.upload_visit_evidence(
+                    session, actor=same_tenant_buyer, booking_id=foreign_booking.id,
+                    contents=PNG_BYTES, content_type="image/png",
+                )
+    finally:
+        get_settings.cache_clear()
+
+
 def test_evidence_api_upload_and_list(
     client, override_db, seeded_roles, test_session_factory, user_factory, auth_headers,
     monkeypatch: pytest.MonkeyPatch, tmp_path,

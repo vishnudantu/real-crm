@@ -102,7 +102,10 @@ def suggest_matches(session: Session, *, actor) -> dict:
         receipt's installment (matched_by=UTR_RECEIPT);
     (b) else if the amount equals exactly one open installment's outstanding,
         record a suggestion (matched_by=AMOUNT_UNIQUE) but keep status UNMATCHED;
-    (c) else leave UNMATCHED in the exception queue.
+    (c) else leave UNMATCHED in the exception queue, PRESERVING any earlier
+        AMOUNT_UNIQUE suggestion: provenance set by a previous run is never
+        cleared silently, only overwritten when this pass finds a (better)
+        match. A human still confirms or ignores every suggestion.
     """
     unmatched = repository.list_unmatched(session, tenant_id=actor.tenant_id)
     open_with_outstanding = _open_installments_with_outstanding(
@@ -135,10 +138,10 @@ def suggest_matches(session: Session, *, actor) -> dict:
             session.add(txn)
             continue
 
-        txn.matched_installment_id = None
-        txn.matched_by = None
+        # No new match this pass: keep whatever AMOUNT_UNIQUE suggestion an
+        # earlier pass recorded. Clearing it here would silently discard a
+        # provenance a human may already be acting on.
         still_unmatched += 1
-        session.add(txn)
 
     session.commit()
     return {"matched": matched, "suggested": suggested, "still_unmatched": still_unmatched}

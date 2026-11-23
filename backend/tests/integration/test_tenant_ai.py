@@ -117,6 +117,33 @@ class TestSetAndMask:
         assert set(body["api_key_masked"]) == set(RAW_KEY[-4:]) | {"*"}
         assert body["is_active"] is True
 
+    def test_provider_set_logging_is_debug_only_without_tenant_id(
+        self, env: dict, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Finding 5: no INFO line naming which tenant configured AI."""
+        import logging
+
+        from app.modules.users.models import User
+
+        caplog.set_level(logging.DEBUG, logger="propflow.tenant_ai.service")
+        with env["factory"]() as s:
+            admin = s.get(User, env["admin_id"])
+            set_provider(s, actor=admin, payload=TenantAIProviderUpsert(**_payload()))
+
+        records = [
+            record
+            for record in caplog.records
+            if record.name == "propflow.tenant_ai.service"
+            and "Tenant AI provider set" in record.getMessage()
+        ]
+        assert records, "the debug breadcrumb must still fire"
+        assert all(record.levelno == logging.DEBUG for record in records)
+        assert not any(
+            getattr(record, "tenant_id", None) == str(env["tenant_id"]) for record in records
+        )
+        rendered = " ".join(f"{r.getMessage()} {vars(r)}" for r in records)
+        assert str(env["tenant_id"]) not in rendered
+
     def test_openai_compatible_requires_base_url(self, client: TestClient, env: dict) -> None:
         r = client.put(
             "/api/v1/tenant-ai/provider",

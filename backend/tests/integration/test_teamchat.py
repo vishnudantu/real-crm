@@ -107,6 +107,65 @@ def test_staff_channel_flow_unread_read_join_and_direct_messages(
     assert duplicate.json()["id"] == direct.json()["id"]
 
 
+def test_direct_channel_name_does_not_leak_participant_ids(
+    client: TestClient, override_db: None, user_factory: Callable[..., User],
+    staff_headers: Callable[[User], dict[str, str]],
+) -> None:
+    """Direct channel names are opaque: no user id appears in the name."""
+    admin = user_factory(role=RoleName.ADMIN, full_name="Admin One")
+    sales = user_factory(role=RoleName.SALES_EXECUTIVE, full_name="Sales Two")
+    admin_headers = staff_headers(admin)
+
+    direct = client.post(
+        "/api/v1/teamchat/direct", headers=admin_headers, json={"user_id": str(sales.id)}
+    )
+    assert direct.status_code == 201, direct.text
+    body = direct.json()
+    assert str(admin.id) not in body["name"] and str(sales.id) not in body["name"]
+    assert body["member_count"] == 2
+
+    # Listing carries the peer's profile so the UI can label the thread
+    # without the name encoding the relationship.
+    channels = client.get("/api/v1/teamchat/channels", headers=admin_headers).json()
+    listed = next(item for item in channels["items"] if item["id"] == body["id"])
+    peer_ids = {
+        member["user"]["id"]
+        for member in listed["members"]
+        if member["user"]["id"] != str(admin.id)
+    }
+    assert peer_ids == {str(sales.id)}
+    listed_member_names = {member["user"]["full_name"] for member in listed["members"]}
+    assert listed_member_names == {"Admin One", "Sales Two"}
+
+    # Repeated creation for the same pair reuses one channel (name stable).
+    again = client.post(
+        "/api/v1/teamchat/direct", headers=admin_headers, json={"user_id": str(sales.id)}
+    )
+    assert again.status_code == 201 and again.json()["id"] == body["id"]
+    # The reverse direction also reuses it.
+    reverse = client.post(
+        "/api/v1/teamchat/direct",
+        headers=staff_headers(sales),
+        json={"user_id": str(admin.id)},
+    )
+    assert reverse.status_code == 201 and reverse.json()["id"] == body["id"]
+
+    # A third staff member gets a DIFFERENT opaque name for the same peer.
+    other = user_factory(role=RoleName.SALES_EXECUTIVE, full_name="Other Staff")
+    third = client.post(
+        "/api/v1/teamchat/direct",
+        headers=staff_headers(other),
+        json={"user_id": str(sales.id)},
+    )
+    assert third.status_code == 201, third.text
+    assert third.json()["id"] != body["id"]
+    assert third.json()["name"] != body["name"]
+
+    # The legacy "dm-{id}-{id}" scheme is gone: nobody's uuid prefixes appear.
+    assert not body["name"].startswith(f"dm-{admin.id}")
+    assert not body["name"].startswith(f"dm-{sales.id}")
+
+
 def test_cross_tenant_access_members_mentions_and_buyers_are_rejected(
     client: TestClient, override_db: None, user_factory: Callable[..., User],
     second_tenant: Tenant, staff_headers: Callable[[User], dict[str, str]],

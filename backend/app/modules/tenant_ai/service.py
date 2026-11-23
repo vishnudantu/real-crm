@@ -81,9 +81,10 @@ def set_provider(
     session.add(record)
     session.commit()
     session.refresh(record)
-    logger.info(
-        "Tenant AI provider set", extra={"tenant_id": str(actor.tenant_id), "provider": record.provider}
-    )
+    # DEBUG only, and no tenant_id: an INFO-level line naming which tenant
+    # configured AI is relationship metadata that does not belong in routine
+    # logs; it is available on the row itself for on-demand inspection.
+    logger.debug("Tenant AI provider set", extra={"provider": record.provider})
     return record
 
 

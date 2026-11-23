@@ -99,6 +99,106 @@ def test_approver_must_be_active_admin_in_requester_tenant(
         assert response.status_code == 404
 
 
+def test_admin_cannot_be_named_approver_of_their_own_request(
+    client: TestClient, env: dict
+) -> None:
+    """Finding 1: approver_id == requesting actor is rejected at creation."""
+    response = client.post(
+        "/api/v1/approvals/requests",
+        json={
+            "request_type": "DEMAND_LETTER",
+            "reference_type": "installment",
+            "reference_id": str(uuid4()),
+            "reason": "Naming myself as approver of my own request is self-approval.",
+        },
+        headers=env["admin_headers"],
+    )
+    assert response.status_code == 201, response.text
+    # A second admin CAN be named; the requester themself cannot.
+    response = client.post(
+        "/api/v1/approvals/requests",
+        json={
+            "request_type": "DEMAND_LETTER",
+            "reference_type": "installment",
+            "reference_id": str(uuid4()),
+            "reason": "Self-named approver must be rejected before persisting.",
+            "approver_id": str(env["admin"].id),
+        },
+        headers=env["admin_headers"],
+    )
+    assert response.status_code == 409, response.text
+
+
+def test_only_named_approver_may_decide(client: TestClient, env: dict, user_factory, auth_headers) -> None:
+    """Finding 1: decide() is restricted to the approver named at creation."""
+    second_admin = user_factory(role=RoleName.ADMIN, email=f"second-{uuid4().hex[:8]}@example.com")
+    response = client.post(
+        "/api/v1/approvals/requests",
+        json={
+            "request_type": "DISCOUNT",
+            "reference_type": "sale_booking",
+            "reference_id": str(uuid4()),
+            "reason": "The discount is reserved for the second admin.",
+            "approver_id": str(second_admin.id),
+        },
+        headers=env["sales_headers"],
+    )
+    assert response.status_code == 201, response.text
+    request_id = response.json()["id"]
+    assert response.json()["approver_id"] == str(second_admin.id)
+
+    # The env admin (an admin, but not the named approver) is forbidden.
+    assert _decision(client, env, request_id).status_code == 403
+
+    # The named approver decides successfully.
+    response = client.post(
+        f"/api/v1/approvals/requests/{request_id}/decision",
+        json={"decision": "APPROVED"},
+        headers=auth_headers(second_admin.email),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["approver_id"] == str(second_admin.id)
+
+
+def test_unnamed_request_keeps_any_admin_deciding(client: TestClient, env: dict) -> None:
+    """Finding 1: with no approver named at creation, any admin may decide."""
+    request_id = _create_unwired_request(client, env)["id"]
+    assert _decision(client, env, request_id).status_code == 200
+
+
+def test_creation_records_approver_in_audit_trail(
+    client: TestClient, env: dict, user_factory, auth_headers
+) -> None:
+    """Finding 6: approver_id is recorded in the audit log on request creation."""
+    named = user_factory(role=RoleName.ADMIN, email=f"audit-{uuid4().hex[:8]}@example.com")
+    response = client.post(
+        "/api/v1/approvals/requests",
+        json={
+            "request_type": "DISCOUNT",
+            "reference_type": "sale_booking",
+            "reference_id": str(uuid4()),
+            "reason": "Audit trail must capture the designated approver.",
+            "approver_id": str(named.id),
+        },
+        headers=env["sales_headers"],
+    )
+    assert response.status_code == 201, response.text
+    request_id = response.json()["id"]
+
+    logs = client.get(
+        "/api/v1/settings/audit-logs?resource_type=APPROVAL_REQUEST",
+        headers=auth_headers(named.email),
+    )
+    assert logs.status_code == 200, logs.text
+    entry = next(
+        item
+        for item in logs.json()["items"]
+        if item["resource_id"] == request_id and item["action"] == "APPROVAL_REQUEST_CREATED"
+    )
+    assert entry["details"]["approver_id"] == str(named.id)
+    assert entry["actor_email"] == env["sales"].email
+
+
 def test_staff_create_pending_request(client: TestClient, env: dict) -> None:
     reference_id = str(uuid4())
     approver_id = str(env["admin"].id)

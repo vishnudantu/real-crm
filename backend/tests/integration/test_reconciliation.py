@@ -80,12 +80,12 @@ def env(
         }
 
 
-def _booked_plan(env: dict, amount_paise: int) -> str:
+def _booked_plan(env: dict, amount_paise: int, lead_id=None) -> str:
     """Create booking -> plan -> single installment via postsales.service."""
     with env["factory"]() as s:
         admin = s.get(User, env["admin_id"])
-        lead = s.get(Lead, env["lead_id"]) or Lead(
-            id=env["lead_id"],
+        lead = s.get(Lead, lead_id or env["lead_id"]) or Lead(
+            id=lead_id,
             tenant_id=admin.tenant_id,
             full_name="Payer One",
             email="payer@finance.example",
@@ -209,6 +209,54 @@ def test_unique_amount_suggestion_does_not_autopost(client: TestClient, env) -> 
         # The installment must NOT be marked paid.
         inst = s.get(Installment, __import__("uuid").UUID(installment_id))
         assert inst.status != "PAID"
+
+
+def test_previous_amount_unique_suggestion_is_not_cleared_silently(
+    client: TestClient, env
+) -> None:
+    """A later pass without a unique match keeps the AMOUNT_UNIQUE provenance."""
+    installment_id = _booked_plan(env, 60_00_00)
+    _ingest(client, env, "UTR-KEEP-1", 60_00_00)
+
+    first = client.post("/api/v1/reconciliation/suggest-matches", headers=env["headers"])
+    assert first.status_code == 200, first.text
+    assert first.json()["suggested"] == 1
+
+    # Drift: a second installment with the SAME outstanding makes the amount
+    # ambiguous, so the next pass finds no unique match for this txn.
+    _booked_plan(env, 60_00_00, lead_id=uuid4())
+    second = client.post("/api/v1/reconciliation/suggest-matches", headers=env["headers"])
+    assert second.status_code == 200, second.text
+    assert second.json()["suggested"] == 0
+    assert second.json()["matched"] == 0
+
+    with env["factory"]() as s:
+        txn = s.scalars(select(BankTransaction).where(BankTransaction.utr == "UTR-KEEP-1")).one()
+        # The earlier suggestion survives: same installment, same matched_by.
+        assert txn.status == TransactionStatus.UNMATCHED.value
+        assert str(txn.matched_installment_id) == installment_id
+        assert txn.matched_by == "AMOUNT_UNIQUE"
+
+    # An exact UTR match still upgrades the suggestion in place.
+    with env["factory"]() as s:
+        admin = s.get(User, env["admin_id"])
+        postsales_service.record_receipt(
+            s,
+            actor=admin,
+            payload=ReceiptCreateRequest(
+                installment_id=__import__("uuid").UUID(installment_id),
+                amount_paise=60_00_00,
+                channel=ReceiptChannel.UPI,
+                reference="UTR-KEEP-1",
+            ),
+        )
+    third = client.post("/api/v1/reconciliation/suggest-matches", headers=env["headers"])
+    assert third.status_code == 200, third.text
+    assert third.json()["matched"] == 1
+    with env["factory"]() as s:
+        txn = s.scalars(select(BankTransaction).where(BankTransaction.utr == "UTR-KEEP-1")).one()
+        assert txn.status == TransactionStatus.MATCHED.value
+        assert txn.matched_by == "UTR_RECEIPT"
 
 
 def test_unmatched_stays_in_exception_queue(client: TestClient, env) -> None:

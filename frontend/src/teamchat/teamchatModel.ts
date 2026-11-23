@@ -89,12 +89,12 @@ export function filterMembersByName(
 }
 
 export function channelDisplayName(
-  channel: TeamChannel, currentUserId: string, staff: readonly TeamStaffUser[],
+  channel: TeamChannel, currentUserId: string, _staff: readonly TeamStaffUser[],
 ): string {
   if (channel.kind !== "DIRECT") return channel.name;
-  const recipientId = channel.name
-    .replace(/^dm-/, "")
-    .replace(currentUserId, "")
-    .replace(/^-|-$/g, "");
-  return staff.find((person) => person.id === recipientId)?.full_name ?? "Direct message";
+  // Direct channel names are opaque hashes (they no longer embed user ids),
+  // so the peer is resolved from the channel's member list. The staff roster
+  // is not consulted: without ids in the name it cannot identify the peer.
+  const peer = channel.members.find((member) => member.user_id !== currentUserId)?.user;
+  return peer?.full_name ?? "Direct message";
 }

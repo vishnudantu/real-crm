@@ -60,12 +60,20 @@ test("filterMembersByName matches full names and emails case-insensitively", () 
 
 test("channelDisplayName resolves direct recipients and preserves channel names", () => {
   const direct: TeamChannel = {
-    id: "1", name: "dm-a-b", topic: null, kind: "DIRECT", is_general: false,
+    id: "1", name: "dm-9f2c1a7b44e08d31a6b5c2f9017e34d8", topic: null, kind: "DIRECT", is_general: false,
     created_by: "a", created_at: "2026-11-22T00:00:00Z", unread_count: 0,
-    member_count: 2, members: [],
+    member_count: 2,
+    members: [
+      { user_id: "a", role: "MEMBER", joined_at: "2026-11-22T00:00:00Z", last_read_at: null, user: admin },
+      { user_id: "b", role: "MEMBER", joined_at: "2026-11-22T00:00:00Z", last_read_at: null, user: sales },
+    ],
   };
   const channel = { ...direct, name: "leasing", kind: "CHANNEL" as const };
+  // Names are opaque hashes now; the peer is resolved from the member list.
   assert.equal(channelDisplayName(direct, "a", [admin, sales]), "Ravi Sales");
   assert.equal(channelDisplayName(direct, "b", [admin, sales]), "Anita Admin");
   assert.equal(channelDisplayName(channel, "a", []), "leasing");
+  // Without member data there is no name-based fallback: generic label only.
+  const bare = { ...direct, members: [] };
+  assert.equal(channelDisplayName(bare, "a", [admin, sales]), "Direct message");
 });

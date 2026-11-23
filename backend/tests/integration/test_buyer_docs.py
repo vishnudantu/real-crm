@@ -319,6 +319,42 @@ def test_document_and_request_service_enforce_tenant_and_contact(
         assert exc.value.status_code == 404
 
 
+def test_cross_tenant_non_staff_gets_404_not_403(
+    test_session_factory: sessionmaker[Session]
+) -> None:
+    """Tenant check precedes the role guard: 403 must never confirm a tenant exists."""
+    with test_session_factory() as session:
+        tenant, admin, contact = _fixture(session)
+        other_tenant = Tenant(slug=f"ord-{uuid4().hex[:8]}", name="Ordering Co")
+        session.add(other_tenant)
+        session.commit()
+        buyer_actor = SimpleNamespace(
+            id=admin.id,
+            tenant_id=other_tenant.id,
+            role=SimpleNamespace(name=RoleName.BUYER.value),
+        )
+        same_tenant_buyer = SimpleNamespace(
+            id=admin.id,
+            tenant_id=tenant.id,
+            role=SimpleNamespace(name=RoleName.BUYER.value),
+        )
+        # Cross-tenant + wrong role: tenant error wins (404, not 403).
+        for call in (
+            lambda: service.list_documents(session, tenant.id, actor=buyer_actor),
+            lambda: service.list_requests(session, tenant.id, actor=buyer_actor),
+            lambda: service.get_document_for_download(
+                session, tenant.id, contact.id, actor=buyer_actor
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                call()
+            assert exc.value.status_code == 404
+        # Same tenant + wrong role: the role guard still answers 403.
+        with pytest.raises(InsufficientPermissionsError) as exc:
+            service.list_documents(session, tenant.id, actor=same_tenant_buyer)
+        assert exc.value.status_code == 403
+
+
 def test_create_list_cancel_request_and_buyer_403(
     client: TestClient,
     override_db: None,
