@@ -18,11 +18,8 @@ export interface UploadDocumentDialogProps {
   /** When fulfilling a staff request, the category is preselected and locked. */
   lockedCategory?: BuyerDocumentCategory;
   initialTitle?: string;
-  /** contact_id resolved for the buyer. If null, uploads are blocked. */
-  contactId: string | null;
   onClose: () => void;
   onUpload: (input: {
-    contactId: string;
     category: BuyerDocumentCategory;
     title: string;
     blob: Blob;
@@ -34,7 +31,6 @@ export function UploadDocumentDialog({
   open,
   lockedCategory,
   initialTitle,
-  contactId,
   onClose,
   onUpload,
 }: UploadDocumentDialogProps) {
@@ -82,12 +78,6 @@ export function UploadDocumentDialog({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
-    if (!contactId) {
-      setError(
-        "We couldn't match your account to a customer record yet. Please contact our team so they can link your documents.",
-      );
-      return;
-    }
     if (!file) {
       setError("Please choose a file to upload.");
       return;
@@ -107,7 +97,6 @@ export function UploadDocumentDialog({
     try {
       const prepared = await prepareUpload(file);
       await onUpload({
-        contactId,
         category,
         title: trimmedTitle,
         blob: prepared.blob,

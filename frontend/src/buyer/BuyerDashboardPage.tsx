@@ -67,11 +67,10 @@ export function BuyerDashboardPage() {
     queryFn: () => fetchBuyerNotifications(1, 10),
   });
 
-  // Open staff document requests. Silently tolerated as unavailable until the
-  // buyer-side document endpoints ship (the /buyer-docs router is staff-only).
+  // Open staff document requests (/mine/requests returns only OPEN ones).
   const { data: docRequestsData } = useQuery({
     queryKey: buyerDocumentKeys.requests(),
-    queryFn: () => fetchBuyerDocumentRequests({ status: "OPEN" }),
+    queryFn: () => fetchBuyerDocumentRequests(),
     retry: false,
   });
   const pendingDocRequests =

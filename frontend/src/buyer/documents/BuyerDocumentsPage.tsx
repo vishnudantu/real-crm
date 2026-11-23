@@ -14,7 +14,6 @@ import { ApiError } from "../../auth/api";
 import { getSession } from "../../auth/session";
 import { errorMessage } from "../../shared/apiRequest";
 import { useBuyerUser } from "../BuyerAuthGuard";
-import { fetchBuyerLeads } from "../api";
 import {
   buyerDocumentKeys,
   downloadBuyerDocument,
@@ -49,16 +48,8 @@ export function BuyerDocumentsPage() {
 
   const requestsQuery = useQuery({
     queryKey: buyerDocumentKeys.requests(),
-    queryFn: () => fetchBuyerDocumentRequests({ status: "OPEN" }),
+    queryFn: () => fetchBuyerDocumentRequests(),
   });
-
-  // The buyer's own lead record (resolved via /leads/mine) supplies the
-  // contact_id the upload endpoint requires.
-  const leadsQuery = useQuery({
-    queryKey: ["buyer", "leads"],
-    queryFn: fetchBuyerLeads,
-  });
-  const contactId = leadsQuery.data?.[0]?.id ?? null;
 
   const uploadMutation = useMutation({
     mutationFn: uploadBuyerDocument,
@@ -234,7 +225,6 @@ export function BuyerDocumentsPage() {
         open={uploadOpen || fulfillingRequest !== null}
         lockedCategory={fulfillingRequest?.category}
         initialTitle={fulfillingRequest?.title}
-        contactId={contactId}
         onClose={() => {
           if (!uploadMutation.isPending) {
             setUploadOpen(false);
@@ -374,17 +364,18 @@ function EmptyDocumentsCard({ onUpload }: { onUpload: () => void }) {
 }
 
 /**
- * Shown when the document list cannot load. A 403 means the backend buyer-side
- * routes have not shipped yet (the /buyer-docs router is staff-only today), so
- * we explain the state instead of showing a generic error.
+ * Shown when the document list cannot load. A 404 on the /mine routes means the
+ * account is not yet matched to a customer record (the backend resolves the
+ * buyer's contact from email/phone), so we explain that state instead of
+ * showing a generic error.
  */
 function BackendNotice({ error }: { error: Error }) {
-  const isForbidden = error instanceof ApiError && error.status === 403;
+  const isUnlinked = error instanceof ApiError && error.status === 404;
   return (
     <div
-      role={isForbidden ? undefined : "alert"}
+      role={isUnlinked ? undefined : "alert"}
       className={`rounded-2xl border p-6 ${
-        isForbidden
+        isUnlinked
           ? "border-sand/40 bg-sand/10"
           : "border-rose-200 bg-rose-50"
       }`}
@@ -392,26 +383,26 @@ function BackendNotice({ error }: { error: Error }) {
       <div className="flex items-start gap-3">
         <ShieldAlert
           className={`mt-0.5 size-5 shrink-0 ${
-            isForbidden ? "text-sand" : "text-rose-700"
+            isUnlinked ? "text-sand" : "text-rose-700"
           }`}
         />
         <div>
           <h3
             className={`text-sm font-semibold ${
-              isForbidden ? "text-charcoal" : "text-rose-800"
+              isUnlinked ? "text-charcoal" : "text-rose-800"
             }`}
           >
-            {isForbidden
-              ? "Document vault is being enabled for your account"
+            {isUnlinked
+              ? "Your account isn't linked to a customer record yet"
               : "We couldn't load your documents"}
           </h3>
           <p
             className={`mt-1 text-xs leading-relaxed ${
-              isForbidden ? "text-charcoal/75" : "text-rose-700"
+              isUnlinked ? "text-charcoal/75" : "text-rose-700"
             }`}
           >
-            {isForbidden
-              ? "Self-service document upload is rolling out. In the meantime, your sales executive can collect documents on your behalf — reach out via My Conversations and we'll take it from there."
+            {isUnlinked
+              ? "Please use the same email or phone your sales executive has on file, or ask them to link your account — then your documents and requests appear here."
               : errorMessage(error, "Something went wrong. Please try again.")}
           </p>
         </div>

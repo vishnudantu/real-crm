@@ -19,14 +19,11 @@ export const buyerDocumentKeys = {
 };
 
 /**
- * NOTE ON ENDPOINT ACCESS
- * ------------------------
- * backend/app/modules/buyer_docs/router.py currently guards every route with
- * require_roles(ADMIN, SALES_EXECUTIVE), so these calls return 403 for a BUYER
- * session until buyer-side routes are added. The portal surfaces that state
- * explicitly rather than fabricating data. These client functions mirror the
- * real backend contracts so the page goes live the moment the buyer-side
- * endpoints ship (see the handoff report for the exact routes needed).
+ * Buyer-scoped routes (/buyer-docs/mine/*). The backend resolves the
+ * authenticated buyer to their contact server-side (email/phone match against
+ * ContactMethod) and only ever returns that contact's own resources; anything
+ * unresolvable or foreign returns 404. Client-passed contact ids are not
+ * accepted on these routes.
  */
 
 export function fetchBuyerDocuments(params: {
@@ -36,25 +33,25 @@ export function fetchBuyerDocuments(params: {
   if (params.category) query.set("category", params.category);
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
   return bearerRequest<BuyerDocumentListResponse>(
-    `/buyer-docs/documents${suffix}`,
+    `/buyer-docs/mine/documents${suffix}`,
     SESSION,
   );
 }
 
 export function fetchBuyerDocumentRequests(params: {
-  status?: "OPEN" | "FULFILLED" | "CANCELLED";
+  category?: BuyerDocumentCategory;
 } = {}): Promise<DocumentRequestListResponse> {
+  // /mine/requests already returns only OPEN requests for this buyer.
   const query = new URLSearchParams();
-  if (params.status) query.set("status", params.status);
+  if (params.category) query.set("category", params.category);
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
   return bearerRequest<DocumentRequestListResponse>(
-    `/buyer-docs/requests${suffix}`,
+    `/buyer-docs/mine/requests${suffix}`,
     SESSION,
   );
 }
 
 export interface UploadBuyerDocumentInput {
-  contactId: string;
   category: BuyerDocumentCategory;
   title: string;
   blob: Blob;
@@ -74,14 +71,13 @@ export async function uploadBuyerDocument(
     throw new ApiError(401, "UNAUTHORIZED", "Active session required.");
   }
   const query = new URLSearchParams({
-    contact_id: input.contactId,
     category: input.category,
     title: input.title,
   });
   if (input.expiryDate) query.set("expiry_date", input.expiryDate);
 
   const response = await fetch(
-    `${API_BASE_URL}/buyer-docs/documents?${query.toString()}`,
+    `${API_BASE_URL}/buyer-docs/mine/documents?${query.toString()}`,
     {
       method: "POST",
       headers: {
@@ -140,7 +136,7 @@ export async function downloadBuyerDocument(
   let response: Response;
   try {
     response = await fetch(
-      `${API_BASE_URL}/buyer-docs/documents/${document.id}/download`,
+      `${API_BASE_URL}/buyer-docs/mine/documents/${document.id}/download`,
       {
         headers: {
           Accept: "*/*",
