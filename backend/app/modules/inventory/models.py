@@ -11,6 +11,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     JSON,
@@ -125,6 +126,7 @@ class PropertyUnit(TenantOwned, Base):
     built_up_area_sqft: Mapped[int | None] = mapped_column(nullable=True)
     plot_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     facing: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    facing_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
     views: Mapped[str | None] = mapped_column(String(255), nullable=True)
     saleable: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=true()

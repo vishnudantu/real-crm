@@ -40,6 +40,7 @@ from app.modules.teamchat.router import alias_router as teamchat_alias_router
 from app.modules.tenant_ai.router import router as tenant_ai_router
 from app.modules.teamchat.router import router as teamchat_router
 from app.modules.users.router import router as users_router
+from app.modules.solar.router import router as solar_router
 from app.modules.voice_intel.router import router as voice_intel_router
 
 api_router = APIRouter()
@@ -84,3 +85,4 @@ api_router.include_router(channel_webhook_router)
 api_router.include_router(widget_router)
 api_router.include_router(voice_intel_router)
 api_router.include_router(connect_dialer_router)
+api_router.include_router(solar_router)

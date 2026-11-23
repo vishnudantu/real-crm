@@ -30,6 +30,7 @@ class UnitCreateRequest(BaseModel):
     built_up_area_sqft: int | None = Field(default=None, ge=1)
     plot_number: str | None = Field(default=None, max_length=64)
     facing: str | None = Field(default=None, max_length=64)
+    facing_deg: float | None = Field(default=None, ge=0.0, le=360.0)
     views: str | None = Field(default=None, max_length=255)
     saleable: bool = True
     status: UnitStatus = UnitStatus.DRAFT
@@ -54,6 +55,7 @@ class UnitUpdateRequest(BaseModel):
     built_up_area_sqft: int | None = Field(default=None, ge=1)
     plot_number: str | None = Field(default=None, max_length=64)
     facing: str | None = Field(default=None, max_length=64)
+    facing_deg: float | None = Field(default=None, ge=0.0, le=360.0)
     views: str | None = Field(default=None, max_length=255)
     saleable: bool | None = None
     rera_disclosure_json: dict | None = None
@@ -73,6 +75,7 @@ class UnitResponse(BaseModel):
     built_up_area_sqft: int | None
     plot_number: str | None
     facing: str | None
+    facing_deg: float | None = None
     views: str | None
     saleable: bool
     status: UnitStatus
