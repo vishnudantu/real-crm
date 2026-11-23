@@ -33,6 +33,16 @@ class ProjectStatus(StrEnum):
     INACTIVE = "INACTIVE"
 
 
+class ProjectType(StrEnum):
+    """Inventory authoring taxonomy; nullable on existing projects."""
+
+    APARTMENT = "APARTMENT"
+    VILLA = "VILLA"
+    PLOT = "PLOT"
+    COMMERCIAL = "COMMERCIAL"
+    MIXED = "MIXED"
+
+
 class FactStatus(StrEnum):
     """Approval states for a project fact."""
 
@@ -55,6 +65,11 @@ class Project(TenantOwned, Base):
             "status IN ('DRAFT', 'ACTIVE', 'INACTIVE')",
             name="status",
         ),
+        CheckConstraint(
+            "project_type IS NULL OR project_type IN "
+            "('APARTMENT', 'VILLA', 'PLOT', 'COMMERCIAL', 'MIXED')",
+            name="project_type_valid",
+        ),
         Index("ix_projects_status_created_at", "status", "created_at"),
         UniqueConstraint("tenant_id", "slug", name="uq_projects_tenant_id_slug"),
     )
@@ -69,6 +84,7 @@ class Project(TenantOwned, Base):
     location: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     rera_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    project_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(

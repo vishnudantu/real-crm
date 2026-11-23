@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+import logging
 from threading import Lock
 from uuid import UUID
 
@@ -48,6 +49,7 @@ from app.modules.postsales.schemas import (
 # in-process lock serializes receipt posting there. PostgreSQL uses the
 # transaction-scoped pg_advisory_xact_lock instead.
 _receipt_post_lock = Lock()
+logger = logging.getLogger(__name__)
 
 
 def _status_for_balance(
@@ -141,6 +143,42 @@ def _void_linked_documents(session: Session, *, actor, receipt: Receipt, reason:
         )
 
 
+def _emit_booking_confirmation(
+    session: Session, *, actor, booking: SaleBooking, lead: Lead, project_name: str | None
+) -> None:
+    """Queue the transactional confirmation in the booking's transaction.
+
+    A booking has no ledger receipt yet: ``receipt_number`` carries the stable
+    booking reference and the default copy labels it "Booking reference".
+    Actual payment-receipt notifications continue to use their own event and
+    receipt number, so this event never invents a payment record.
+    """
+
+    from app.core.india import format_inr
+    from app.modules.messaging.engine import emit_event
+
+    try:
+        emit_event(
+            session,
+            tenant_id=actor.tenant_id,
+            event="sale_booking.created",
+            context={
+                "entity_type": "sale_booking",
+                "entity_id": booking.id,
+                "first_name": lead.full_name.split(" ", 1)[0],
+                "buyer_name": lead.full_name,
+                "project_name": project_name,
+                "unit": booking.unit_number,
+                "unit_code": booking.unit_number,
+                "booking_amount": format_inr(booking.consideration_paise),
+                "receipt_number": f"BK-{str(booking.id)[:8].upper()}",
+                "to_address": lead.phone or lead.email,
+            },
+        )
+    except Exception as exc:
+        logger.warning("Could not emit sale_booking.created messaging event: %s", exc)
+
+
 def create_booking(
     session: Session, *, actor, payload: SaleBookingCreateRequest, commit: bool = True
 ) -> SaleBooking:
@@ -217,6 +255,10 @@ def create_booking(
         status=SaleStatus.BOOKED.value,
     )
     session.add(booking)
+    session.flush()  # assign booking.id before the outbox event references it
+    _emit_booking_confirmation(
+        session, actor=actor, booking=booking, lead=lead, project_name=lead.project.name
+    )
     if commit:
         session.commit()
         session.refresh(booking)

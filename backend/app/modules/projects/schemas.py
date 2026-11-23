@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.modules.projects.models import FactStatus, ProjectStatus
+from app.modules.projects.models import FactStatus, ProjectStatus, ProjectType
 
 _SLUG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 _CATEGORY_PATTERN = r"^[A-Z0-9][A-Z0-9 &/_.,()'\-]*$"
@@ -48,6 +48,7 @@ class ProjectCreateRequest(BaseModel):
     location: str = Field(min_length=2, max_length=255)
     description: str | None = Field(default=None, max_length=5000)
     rera_number: str | None = Field(default=None, max_length=64)
+    project_type: ProjectType | None = None
     status: ProjectStatus = ProjectStatus.DRAFT
 
     @field_validator("slug", mode="before")
@@ -78,6 +79,7 @@ class ProjectUpdateRequest(BaseModel):
     location: str | None = Field(default=None, min_length=2, max_length=255)
     description: str | None = Field(default=None, max_length=5000)
     rera_number: str | None = Field(default=None, max_length=64)
+    project_type: ProjectType | None = None
     latitude: float | None = Field(default=None, ge=-90.0, le=90.0)
     longitude: float | None = Field(default=None, ge=-180.0, le=180.0)
     status: ProjectStatus | None = None
@@ -115,6 +117,7 @@ class ProjectResponse(BaseModel):
     location: str
     description: str | None = None
     rera_number: str | None = None
+    project_type: ProjectType | None = None
     latitude: float | None = None
     longitude: float | None = None
     status: ProjectStatus

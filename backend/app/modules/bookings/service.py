@@ -751,6 +751,8 @@ def update_booking_status(
                     "entity_id": booking.id,
                     "first_name": booking.lead.full_name.split(" ", 1)[0],
                     "project_name": booking.project.name if booking.project else None,
+                    "unit": booking.project.name if booking.project else None,
+                    "visit_date": booking.slot.start_time.date().isoformat() if booking.slot else None,
                     "to_address": booking.lead.phone or booking.lead.email,
                 },
             )

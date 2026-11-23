@@ -187,6 +187,7 @@ def create_project(
         location=payload.location,
         description=payload.description,
         rera_number=payload.rera_number,
+        project_type=payload.project_type.value if payload.project_type is not None else None,
         status=_status_value(payload.status),
         created_by=actor.id,
         tenant_id=actor.tenant_id,
@@ -304,7 +305,7 @@ def update_project(
                 raise ProjectSlugAlreadyExistsError()
         project.slug = requested_slug
 
-    for field_name in ("name", "location", "description", "rera_number"):
+    for field_name in ("name", "location", "description", "rera_number", "project_type"):
         if field_name in fields:
             setattr(project, field_name, fields[field_name])
 
