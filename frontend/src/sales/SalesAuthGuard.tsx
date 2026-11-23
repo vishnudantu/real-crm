@@ -22,6 +22,16 @@ export function useSalesUser(): SalesContextType {
   return context;
 }
 
+/**
+ * Null-safe variant for components rendered under EITHER the sales or admin
+ * route tree (e.g. TeamChatPage). Returns null when no SalesAuthGuard is an
+ * ancestor instead of throwing, so a shared page can pick whichever session
+ * context is actually present without crashing on the other route.
+ */
+export function useOptionalSalesUser(): SalesContextType | null {
+  return useContext(SalesContext);
+}
+
 export function SalesAuthGuard() {
   const navigate = useNavigate();
   const location = useLocation();

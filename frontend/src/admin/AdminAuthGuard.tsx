@@ -23,6 +23,15 @@ export function useAdminUser(): AdminContextType {
   return context;
 }
 
+/**
+ * Null-safe variant for shared pages mounted under either the admin or sales
+ * route tree (e.g. TeamChatPage). Returns null when no AdminAuthGuard is an
+ * ancestor instead of throwing, so the page can select the active session.
+ */
+export function useOptionalAdminUser(): AdminContextType | null {
+  return useContext(AdminContext);
+}
+
 export function AdminAuthGuard() {
   const navigate = useNavigate();
   const location = useLocation();

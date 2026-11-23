@@ -12,8 +12,8 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { useAdminUser } from "../admin/AdminAuthGuard";
-import { useSalesUser } from "../sales/SalesAuthGuard";
+import { useOptionalAdminUser } from "../admin/AdminAuthGuard";
+import { useOptionalSalesUser } from "../sales/SalesAuthGuard";
 import { errorMessage } from "../shared/apiRequest";
 import {
   createDirectChannel,
@@ -66,9 +66,14 @@ function authorInitials(message: TeamMessage): string {
 
 export function TeamChatPage() {
   const location = useLocation();
-  const admin = useAdminUser();
-  const sales = useSalesUser();
-  const currentUser: ChatUser = location.pathname.startsWith("/sales") ? sales.user : admin.user;
+  const admin = useOptionalAdminUser();
+  const sales = useOptionalSalesUser();
+  const isSalesRoute = location.pathname.startsWith("/sales");
+  const activeUser = isSalesRoute ? sales?.user : admin?.user;
+  // Rendered under either guard; one of the two contexts is present on a matched
+  // route. Use a stable fallback so all hooks below run unconditionally (Rules
+  // of Hooks); the missing-session case is handled at render time.
+  const currentUser: ChatUser = activeUser ?? { id: "", full_name: "", role: { name: "" } };
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobileThreadOpen, setMobileThreadOpen] = useState(false);
@@ -211,6 +216,15 @@ export function TeamChatPage() {
   const otherChannels = channels.filter((channel) => channel.kind === "CHANNEL");
   const directChannels = channels.filter((channel) => channel.kind === "DIRECT");
   const totalUnread = unreadQuery.data?.total ?? channelsQuery.data?.unread_total ?? 0;
+
+  // All hooks above run unconditionally; gate the actual chat UI on a real session.
+  if (!activeUser) {
+    return (
+      <div className="flex h-[34rem] items-center justify-center p-8 text-sm text-charcoal/60">
+        Team chat requires an authenticated staff session.
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100svh-12rem)] min-h-[34rem] flex-col gap-4 lg:h-[calc(100svh-10rem)]">
