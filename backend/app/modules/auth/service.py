@@ -48,6 +48,12 @@ from app.modules.tenancy.service import get_or_create_tenant
 from uuid import UUID
 
 
+def _token_role_name(user: User) -> str:
+    """Custom-role names are informational; permissions are resolved from DB."""
+
+    return user.custom_role.name if user.custom_role is not None else user.role.name
+
+
 @dataclass(frozen=True)
 class LoginResult:
     """Authenticated user plus the access and refresh tokens issued at login."""
@@ -199,7 +205,7 @@ def login_user(
     user = authenticate_user(session, email=email, password=password)
     access_token = create_access_token(
         user_id=user.id,
-        role_name=user.role.name,
+        role_name=_token_role_name(user),
         tenant_id=user.tenant_id,
         security_version=user.security_version,
         settings=settings,
@@ -374,7 +380,7 @@ def refresh_access_token(
     # Issue a new access token and a rotated refresh token.
     access_token = create_access_token(
         user_id=user.id,
-        role_name=user.role.name,
+        role_name=_token_role_name(user),
         tenant_id=user.tenant_id,
         security_version=user.security_version,
         settings=settings,

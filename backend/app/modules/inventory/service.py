@@ -135,12 +135,13 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def _resolve_inventory_manager(session: Session, actor) -> bool:
-    """Check manager access for ORM users and detached test principals.
+    """Resolve legacy manager rights or an explicit inventory.write grant."""
 
-    Managers receive inventory rights, not blanket administrator privileges.
-    This check is used only to let them manage another user's hold.
-    """
-
+    custom_role = getattr(actor, "custom_role", None)
+    if getattr(actor, "custom_role_id", None) is not None:
+        if custom_role is not None:
+            return "inventory.write" in (custom_role.permissions or [])
+        return False
     allowed = {RoleName.ADMIN.value, RoleName.MANAGER.value}
     role = getattr(actor, "role", None)
     if role is not None:

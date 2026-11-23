@@ -39,6 +39,7 @@ from app.modules.tenancy.router import router as tenancy_router
 from app.modules.teamchat.router import alias_router as teamchat_alias_router
 from app.modules.tenant_ai.router import router as tenant_ai_router
 from app.modules.teamchat.router import router as teamchat_router
+from app.modules.users.role_router import router as custom_roles_router
 from app.modules.users.router import router as users_router
 from app.modules.solar.router import router as solar_router
 from app.modules.voice_intel.router import router as voice_intel_router
@@ -47,6 +48,7 @@ api_router = APIRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
 api_router.include_router(auth_router)
 api_router.include_router(approvals_router)
+api_router.include_router(custom_roles_router)
 api_router.include_router(users_router)
 api_router.include_router(projects_router)
 api_router.include_router(leads_router)
