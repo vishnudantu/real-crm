@@ -46,7 +46,7 @@ def test_project_type_migration_is_idempotent_and_enforces_values() -> None:
     metadata.create_all(engine)
     migration = _load_migration()
     assert migration.revision == "e2b7c4a9d1f6"
-    assert migration.down_revision == "c3a7f1d9e2b5"
+    assert migration.down_revision == "d4e6a8b2c1f3"
 
     with engine.begin() as connection:
         migration.op = Operations(MigrationContext.configure(connection))
