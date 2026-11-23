@@ -1,4 +1,4 @@
-export type AdminRoleName = "ADMIN" | "SALES_EXECUTIVE" | "BUYER";
+export type AdminRoleName = "ADMIN" | "SALES_EXECUTIVE" | "MANAGER" | "BUYER";
 
 export interface AdminRoleOption {
   value: AdminRoleName;
@@ -8,19 +8,19 @@ export interface AdminRoleOption {
 
 /**
  * Single source of truth for assignable roles. There is no GET /roles endpoint
- * yet, so this mirrors backend/app/modules/users/models.py RoleName. When the
- * MANAGER role lands (feat/manager-role) add it here (and to AdminRoleName);
- * user creation, editing and filters all render from this list. It should
- * become API-driven once a roles endpoint exists.
+ * yet, so this mirrors backend/app/modules/users/models.py RoleName (which now
+ * includes MANAGER). It should become API-driven once a roles endpoint exists.
  */
 export const ADMIN_ROLE_OPTIONS: readonly AdminRoleOption[] = [
   { value: "ADMIN", label: "Admin", description: "Full management" },
+  { value: "MANAGER", label: "Manager", description: "Inventory & team operations" },
   { value: "SALES_EXECUTIVE", label: "Sales Exec", description: "Handles leads & visits" },
   { value: "BUYER", label: "Buyer", description: "Explores & books" },
 ];
 
 export const ROLE_LABELS: Readonly<Record<AdminRoleName, string>> = {
   ADMIN: "Administrator",
+  MANAGER: "Manager",
   SALES_EXECUTIVE: "Sales Executive",
   BUYER: "Buyer",
 };
