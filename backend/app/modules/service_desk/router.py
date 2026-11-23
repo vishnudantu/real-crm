@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import require_permission
+from app.modules.auth.dependencies import require_permission, require_roles
 from app.modules.service_desk import service
 from app.modules.service_desk.models import (
     KbArticleStatus,
@@ -43,7 +43,7 @@ from app.modules.service_desk.schemas import (
     TicketSatisfactionResponse,
     TicketStatusUpdateRequest,
 )
-from app.modules.users.models import User
+from app.modules.users.models import RoleName, User
 from app.modules.users.permissions import SERVICE_DESK_USE
 
 router = APIRouter(prefix="/service-desk", tags=["service-desk"])
