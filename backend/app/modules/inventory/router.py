@@ -50,7 +50,7 @@ HoldWriter = Annotated[
 
 DiscountRequester = Annotated[
     User,
-    Depends(require_roles(RoleName.ADMIN, RoleName.MANAGER, RoleName.SALES_EXECUTIVE)),
+    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
 ]
 
 
