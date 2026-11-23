@@ -44,17 +44,17 @@ def _past(hours: int = 24) -> datetime:
 
 
 def _due_today() -> datetime:
-    """A moment guaranteed to be inside the CURRENT UTC day.
+    """A moment guaranteed to be categorized DUE_TODAY regardless of run time.
 
-    Fixed offsets like now+2h cross UTC midnight after 22:00 UTC and make
-    'due today' categorization flake by wall-clock time. Prefer now+30min;
-    within 30 minutes of midnight fall back to now-1h (still today).
+    Offsets relative to ``now`` (e.g. now+30min) race the wall clock: if the
+    suite computes the timestamp just before UTC midnight but the API
+    categorizes it just after, the bucket flips to tomorrow and the assertion
+    fails only at that boundary. Anchoring to midday UTC of the current day
+    keeps the follow-up inside the same calendar day for the whole request,
+    so the DUE_TODAY categorization is stable at any run time.
     """
     now = datetime.now(UTC)
-    tomorrow_start = datetime(now.year, now.month, now.day, tzinfo=UTC) + timedelta(days=1)
-    if now + timedelta(minutes=30) < tomorrow_start:
-        return now + timedelta(minutes=30)
-    return now - timedelta(hours=1)
+    return datetime(now.year, now.month, now.day, 12, 0, 0, tzinfo=UTC)
 
 
 def _create_active_project(client: TestClient, admin_headers: dict[str, str], name: str) -> dict[str, Any]:
@@ -168,16 +168,9 @@ def test_follow_up_metrics_and_categorization(
     )
     assign_lead(client, admin_headers, lead_id=lead["id"], executive_id=str(exec_1.id))
 
-    # Follow-up 1: Due Today. Pinned inside the CURRENT UTC day so the
-    # assertion cannot flake near UTC midnight (a fixed +3h from 21:00 UTC
-    # onward would land in "upcoming" instead).
-    now = datetime.now(UTC)
-    tomorrow_start = datetime(now.year, now.month, now.day, tzinfo=UTC) + timedelta(days=1)
-    due_today_at = (
-        now + timedelta(minutes=30)
-        if now + timedelta(minutes=30) < tomorrow_start
-        else now - timedelta(hours=1)  # within 30 min of midnight: still today
-    )
+    # Follow-up 1: Due Today. Anchored to midday UTC of the current day via the
+    # shared helper so the bucket cannot flip across the request at midnight.
+    due_today_at = _due_today()
     client.post(
         "/api/v1/follow-ups",
         json={
