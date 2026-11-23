@@ -3,8 +3,10 @@ import { useMutation } from "@tanstack/react-query";
 import { LoaderCircle, X } from "lucide-react";
 import { useModalFocus } from "../shared/useModalFocus";
 import { errorMessage } from "../shared/apiRequest";
+import type { ProjectType } from "../admin/projectModel";
 import { deleteUnit, updateUnit } from "./inventoryApi";
 import type { Unit, UnitUpdateRequest } from "./inventoryModel";
+import { unitAuthoringGuidance } from "./inventoryModel";
 import {
   inventoryDangerButton,
   inventoryInputClasses,
@@ -66,12 +68,14 @@ function positiveInt(value: string): number | null {
 
 interface EditUnitDialogProps {
   unit: Unit;
+  /** When provided, tower/floor/plot inputs carry the project's per-type hints. */
+  projectType?: ProjectType | null;
   onClose: () => void;
   onSaved: (updated: Unit, message: string) => void | Promise<void>;
 }
 
 /** Edit the mutable identity/physical fields. Code and status are read-only. */
-export function EditUnitDialog({ unit, onClose, onSaved }: EditUnitDialogProps) {
+export function EditUnitDialog({ unit, projectType, onClose, onSaved }: EditUnitDialogProps) {
   const [configuration, setConfiguration] = useState(unit.configuration ?? "");
   const [tower, setTower] = useState(unit.tower ?? "");
   const [floor, setFloor] = useState(unit.floor ?? "");
@@ -88,6 +92,7 @@ export function EditUnitDialog({ unit, onClose, onSaved }: EditUnitDialogProps) 
   const [saleable, setSaleable] = useState(unit.saleable);
   const [reraJson, setReraJson] = useState(JSON.stringify(unit.rera_disclosure_json ?? {}, null, 2));
   const [formError, setFormError] = useState<string | null>(null);
+  const guidance = projectType ? unitAuthoringGuidance(projectType) : null;
 
   const mutation = useMutation({
     mutationFn: (payload: UnitUpdateRequest) => updateUnit(unit.id, payload),
@@ -140,6 +145,11 @@ export function EditUnitDialog({ unit, onClose, onSaved }: EditUnitDialogProps) 
       onClose={onClose}
     >
       <form noValidate onSubmit={submit} className="space-y-4">
+        {guidance && (
+          <p role="note" className="rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-[11px] leading-relaxed text-sky-900">
+            {guidance.summary}
+          </p>
+        )}
         {formError && (
           <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs text-rose-700">
             {formError}
@@ -159,14 +169,27 @@ export function EditUnitDialog({ unit, onClose, onSaved }: EditUnitDialogProps) 
               className={inventoryInputClasses} />
           </div>
           <div>
-            <label htmlFor="edit-tower" className={inventoryLabelClasses}>Tower</label>
+            <label htmlFor="edit-tower" className={inventoryLabelClasses}>
+              Tower
+              {guidance?.requiresTower && <span className="ml-1 text-rose-500" title="Required for this project type">*</span>}
+              {guidance?.disallowsTower && <span className="ml-1 text-[10px] font-normal text-charcoal/40">(must be empty)</span>}
+            </label>
             <input id="edit-tower" value={tower} maxLength={64}
+              aria-required={guidance?.requiresTower || undefined}
               onChange={(e) => setTower(e.target.value)} className={inventoryInputClasses} />
           </div>
           <div>
-            <label htmlFor="edit-floor" className={inventoryLabelClasses}>Floor</label>
+            <label htmlFor="edit-floor" className={inventoryLabelClasses}>
+              Floor
+              {guidance?.requiresFloor && <span className="ml-1 text-rose-500" title="Required for this project type">*</span>}
+            </label>
             <input id="edit-floor" value={floor} maxLength={64}
+              aria-required={guidance?.requiresFloor || undefined}
+              placeholder={guidance?.floorHint ? "e.g. G or B1 (ground/basement only)" : undefined}
               onChange={(e) => setFloor(e.target.value)} className={inventoryInputClasses} />
+            {guidance?.floorHint && (
+              <p className="mt-1 text-[10px] leading-relaxed text-charcoal/45">{guidance.floorHint}</p>
+            )}
           </div>
           <div>
             <label htmlFor="edit-position" className={inventoryLabelClasses}>Position</label>
@@ -175,8 +198,13 @@ export function EditUnitDialog({ unit, onClose, onSaved }: EditUnitDialogProps) 
               className={inventoryInputClasses} />
           </div>
           <div>
-            <label htmlFor="edit-plot-number" className={inventoryLabelClasses}>Plot number</label>
+            <label htmlFor="edit-plot-number" className={inventoryLabelClasses}>
+              Plot number
+              {guidance?.requiresPlotNumber && <span className="ml-1 text-rose-500" title="Required for this project type">*</span>}
+              {guidance?.disallowsPlotNumber && <span className="ml-1 text-[10px] font-normal text-charcoal/40">(must be empty)</span>}
+            </label>
             <input id="edit-plot-number" value={plotNumber} maxLength={64}
+              aria-required={guidance?.requiresPlotNumber || undefined}
               onChange={(e) => setPlotNumber(e.target.value)} className={inventoryInputClasses} />
           </div>
           <div>

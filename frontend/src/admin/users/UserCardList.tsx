@@ -1,6 +1,6 @@
 import { Edit3, Power } from "lucide-react";
 import type { UserItem } from "../adminModel";
-import { formatDate, RoleBadge, StatusBadge } from "./UserTable";
+import { CustomRoleBadge, formatDate, RoleBadge, StatusBadge } from "./UserTable";
 
 type UserCardListProps = {
   users: UserItem[];
@@ -57,8 +57,9 @@ export function UserCardList({
 
             {/* Middle row: Role, Phone, Created Date */}
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-charcoal/5 pt-2.5 text-xs text-charcoal/70">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <RoleBadge roleName={u.role.name} />
+                {u.custom_role && <CustomRoleBadge name={u.custom_role.name} />}
                 {u.phone && <span>{u.phone}</span>}
               </div>
               <span className="text-[11px] text-charcoal/50">

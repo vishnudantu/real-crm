@@ -19,6 +19,7 @@ import { SunPathStudio } from "../solar/SunPathStudio";
 import { useModalFocus } from "../shared/useModalFocus";
 import { errorMessage } from "../shared/apiRequest";
 import { useAdminUser } from "../admin/AdminAuthGuard";
+import type { ProjectType } from "../admin/projectModel";
 import { fetchUnit, reserveHold, transitionUnit } from "./inventoryApi";
 import type { HoldResponse } from "./inventoryModel";
 import {
@@ -47,13 +48,15 @@ import { DeleteUnitDialog, EditUnitDialog } from "./UnitEditDialogs";
 
 interface UnitDetailDrawerProps {
   unitId: string;
+  /** Passed through to the edit dialog so tower/floor/plot hints follow the project. */
+  projectType?: ProjectType | null;
   onClose: () => void;
   onChanged: (message: string) => void | Promise<void>;
 }
 
 type DialogKind = "hold" | "extend" | "release" | "convert" | "edit" | "delete" | null;
 
-export function UnitDetailDrawer({ unitId, onClose, onChanged }: UnitDetailDrawerProps) {
+export function UnitDetailDrawer({ unitId, projectType, onClose, onChanged }: UnitDetailDrawerProps) {
   const { user } = useAdminUser();
   const queryClient = useQueryClient();
   const dialogRef = useModalFocus<HTMLDivElement>(onClose);
@@ -588,6 +591,7 @@ export function UnitDetailDrawer({ unitId, onClose, onChanged }: UnitDetailDrawe
       {unit && dialog === "edit" && (
         <EditUnitDialog
           unit={unit}
+          projectType={projectType}
           onClose={() => setDialog(null)}
           onSaved={async (_updated, message) => {
             setDialog(null);

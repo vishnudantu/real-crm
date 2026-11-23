@@ -23,6 +23,7 @@ interface NavigationGroupDefinition {
 
 const SETTINGS_CHILDREN: readonly NavigationDefinition[] = [
   { label: "Branding", shortLabel: "Branding", to: "/admin/settings/branding" },
+  { label: "Roles", shortLabel: "Roles", to: "/admin/settings/roles" },
   { label: "AI Assistant", shortLabel: "AI", to: "/admin/settings/ai" },
   { label: "AI Providers", shortLabel: "AI Providers", to: "/admin/settings/ai-providers" },
   { label: "Languages", shortLabel: "Languages", to: "/admin/settings/languages" },
@@ -110,6 +111,7 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
 
 const SETTINGS_TAB_BY_SEGMENT: Readonly<Record<string, string>> = {
   branding: "branding",
+  roles: "roles",
   ai: "ai_assistant",
   languages: "languages",
   reminders: "reminders",
