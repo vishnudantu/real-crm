@@ -55,5 +55,5 @@ def test_head_is_kb_csat_migration() -> None:
     assert not missing, f"dangling down_revision(s): {missing}"
     children = {down for down in revisions.values() if down is not None}
     heads = [revision for revision in revisions if revision not in children]
-    assert heads == ["e4c8a2f7b9d1"]
+    assert heads == ["4b8d2f6c91ae"]
     assert len("e4c8a2f7b9d1") == 12

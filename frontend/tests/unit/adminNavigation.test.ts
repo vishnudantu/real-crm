@@ -28,7 +28,7 @@ test("keeps core navigation in stable labeled groups when all optional features 
   assert.deepEqual(pathsByGroup({}), [
     ["/admin"],
     ["/admin/notifications"],
-    ["/admin/projects", "/admin/visits", "/admin/construction"],
+    ["/admin/projects", "/admin/visits", "/admin/construction", "/admin/handover"],
     ["/admin/customers", "/admin/opportunities", "/admin/brokers"],
     ["/admin/approvals", "/admin/service-desk", "/admin/service-desk/knowledge", "/admin/call-intelligence"],
     ["/admin/inventory", "/admin/inventory/units", "/admin/inventory/sun-facing"],

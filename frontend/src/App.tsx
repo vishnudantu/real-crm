@@ -102,6 +102,9 @@ const ReconciliationPage = lazy(() =>
     default: module.ReconciliationPage,
   })),
 );
+const HandoverPage = lazy(() =>
+  import("./handover/HandoverPage").then((module) => ({ default: module.HandoverPage })),
+);
 const ConstructionPage = lazy(() =>
   import("./construction/ConstructionPage").then((module) => ({
     default: module.ConstructionPage,
@@ -370,6 +373,11 @@ export default function App() {
               />
               <Route path="access" element={<OperatorNoAccessPage />} />
               <Route path="*" element={<Navigate to="/operator" replace />} />
+            </Route>
+          </Route>
+          <Route path="/admin/handover" element={<AdminAuthGuard staffOnly />}>
+            <Route element={<AdminLayout />}>
+              <Route index element={<Suspense fallback={<RouteLoadingFallback />}><HandoverPage /></Suspense>} />
             </Route>
           </Route>
           <Route path="/admin" element={<AdminAuthGuard />}>

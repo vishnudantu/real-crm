@@ -45,6 +45,7 @@ TRANSACTIONAL_EVENTS = frozenset({
     "sale_booking.created",
     "document.receipt_issued",
     "document.demand_letter_issued",
+    "handover.completed",
     "visit_reminder_24h",
     "visit_reminder_2h",
     # Collections reminders serve the existing sale contract (a scheduled
