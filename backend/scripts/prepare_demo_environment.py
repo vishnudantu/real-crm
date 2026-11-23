@@ -10,6 +10,7 @@ Generates realistic demo data for Ahmedabad residential projects with:
 - Follow-ups across priority tiers (Due today, Overdue, Upcoming, Completed).
 - Human handoffs, in-app notifications, and audit logs.
 - Marketing spend records for realistic analytics and CPL / CPV calculations.
+- A dedicated Hyderabad solar-intelligence project with computed DRAFT facts.
 
 Safety:
 - Idempotent: can be run repeatedly without duplicating or corrupting data.
@@ -52,6 +53,7 @@ from app.modules.follow_ups.models import (
     FollowUpType,
 )
 from app.modules.handoffs.models import Handoff, HandoffReason, HandoffStatus
+from app.modules.inventory.models import PropertyUnit, UnitStatus
 from app.modules.leads.models import Lead, LeadAssignment, LeadSource, LeadStatus
 from app.modules.notifications.models import Notification, NotificationType
 from app.modules.projects.models import (
@@ -63,6 +65,9 @@ from app.modules.projects.models import (
 )
 from app.modules.settings.models import AuditLog
 from app.modules.settings.service import ensure_defaults_seeded, log_admin_action
+from app.modules.solar.compass import bearing_to_compass
+from app.modules.solar.facts import generate_solar_facts
+from app.modules.solar.models import TowerOrientation
 from app.modules.users.models import Role, RoleName, User
 from app.modules.tenancy.service import get_or_create_tenant
 from app.modules.users.service import seed_roles
@@ -74,6 +79,12 @@ DEMO_PROJECT_SLUGS = [
     "shantigram-sky-greens",
     "heritage-terraces-science-city",
 ]
+SOLAR_DEMO_SLUG = "hyderabad-solar-residences"
+
+# Hyderabad city coordinates (17.38°N, 78.48°E) keep the computed sun path
+# truthful for the demo site; they are not external geocoding API results.
+HYDERABAD_LATITUDE = 17.38
+HYDERABAD_LONGITUDE = 78.48
 
 # Anchor date: November 7, 2026
 ANCHOR_NOW = datetime(2026, 11, 7, 18, 0, 0, tzinfo=UTC)
@@ -179,6 +190,128 @@ def reset_demo_data(session) -> None:
 
     session.commit()
     print("Demo data reset cleanly.")
+    reset_hyderabad_solar_demo(session)
+
+
+def seed_hyderabad_solar_demo(session, *, admin_user: User) -> dict[str, int]:
+    """Create one self-contained Hyderabad project demonstrating solar intelligence.
+
+    Existing Ahmedabad projects are deliberately not given Hyderabad coordinates.
+    This additive demo is safe to re-run and leaves unrelated inventory untouched.
+    """
+    project = session.query(Project).filter(
+        Project.tenant_id == admin_user.tenant_id,
+        Project.slug == SOLAR_DEMO_SLUG,
+    ).first()
+    if project is None:
+        project = Project(
+            tenant_id=admin_user.tenant_id,
+            name="Solar Residences @ Financial District",
+            slug=SOLAR_DEMO_SLUG,
+            location="Financial District, Hyderabad",
+            description=(
+                "Demo 2 & 3 BHK residences showcasing computed site sun paths, "
+                "tower orientations, unit facing scores, and advisory pricing hints."
+            ),
+            status=ProjectStatus.ACTIVE.value,
+            created_by=admin_user.id,
+            created_at=START_DATE,
+        )
+        session.add(project)
+        session.flush()
+
+    project.latitude = HYDERABAD_LATITUDE
+    project.longitude = HYDERABAD_LONGITUDE
+
+    tower_specs = (("A", 90.0), ("B", 0.0), ("C", 180.0), ("D", 270.0))
+    for tower_label, orientation_deg in tower_specs:
+        orientation = session.query(TowerOrientation).filter(
+            TowerOrientation.tenant_id == project.tenant_id,
+            TowerOrientation.project_id == project.id,
+            TowerOrientation.tower_label == tower_label,
+        ).first()
+        if orientation is None:
+            orientation = TowerOrientation(
+                tenant_id=project.tenant_id,
+                project_id=project.id,
+                tower_label=tower_label,
+            )
+            session.add(orientation)
+        orientation.orientation_deg = orientation_deg
+
+    unit_specs = (
+        ("A-301", "A", "3 BHK", 90.0, "East-facing living deck"),
+        ("A-302", "A", "2 BHK", 45.0, "North-east corner residence"),
+        ("B-401", "B", "3 BHK", 0.0, "Diffused north light"),
+        ("C-502", "C", "2 BHK", 180.0, "Bright south-facing living room"),
+        ("D-603", "D", "3 BHK", 270.0, "West-facing with external shading"),
+        ("D-604", "D", "2 BHK", None, "Facing inherited from Tower D"),
+    )
+    for code, tower, configuration, facing_deg, position in unit_specs:
+        unit = session.query(PropertyUnit).filter(
+            PropertyUnit.tenant_id == project.tenant_id,
+            PropertyUnit.project_id == project.id,
+            PropertyUnit.internal_code == code,
+        ).first()
+        if unit is None:
+            unit = PropertyUnit(
+                tenant_id=project.tenant_id,
+                project_id=project.id,
+                internal_code=code,
+                status=UnitStatus.AVAILABLE.value,
+                rera_disclosure_json={},
+            )
+            session.add(unit)
+        unit.tower = tower
+        unit.configuration = configuration
+        unit.floor = code.split("-")[1][0]
+        unit.position = position
+        unit.facing_deg = facing_deg
+        effective_bearing = (
+            facing_deg
+            if facing_deg is not None
+            else dict(tower_specs)[tower]
+        )
+        unit.facing = bearing_to_compass(effective_bearing)
+        unit.saleable = True
+
+    session.flush()
+    facts = generate_solar_facts(
+        session,
+        tenant_id=project.tenant_id,
+        project_id=project.id,
+        actor_id=admin_user.id,
+    )
+    assert all(fact.status == FactStatus.DRAFT.value for fact in facts)
+    print(
+        "  Seeded Hyderabad solar demo: 4 towers, 6 units, 2 DRAFT facts "
+        "(17.38°N, 78.48°E)"
+    )
+    return {"towers": len(tower_specs), "units": len(unit_specs), "facts": len(facts)}
+
+
+def reset_hyderabad_solar_demo(session) -> None:
+    """Remove only records belonging to the dedicated Hyderabad solar demo."""
+    project = session.query(Project).filter(Project.slug == SOLAR_DEMO_SLUG).first()
+    if project is None:
+        return
+    session.query(TowerOrientation).filter(
+        TowerOrientation.project_id == project.id
+    ).delete(synchronize_session=False)
+    session.query(PropertyUnit).filter(PropertyUnit.project_id == project.id).delete(
+        synchronize_session=False
+    )
+    for fact in session.query(ProjectFact).filter(
+        ProjectFact.project_id == project.id
+    ).all():
+        session.query(FactVersion).filter(FactVersion.fact_id == fact.id).delete(
+            synchronize_session=False
+        )
+        session.delete(fact)
+    session.flush()
+    session.delete(project)
+    session.commit()
+    print("Removed Hyderabad solar demo records.")
 
 
 def seed_demo_environment() -> dict[str, int]:
@@ -1040,7 +1173,13 @@ def seed_demo_environment() -> dict[str, int]:
         print("  Configured marketing spend records for accurate CPL/CPV analytics")
 
         # -------------------------------------------------------------
-        # 11. RECORD COUNT SUMMARY
+        # 11. HYDERABAD SOLAR INTELLIGENCE DEMO
+        # -------------------------------------------------------------
+        print("\n--- 11. Seeding Hyderabad Solar Intelligence Demo ---")
+        solar_demo = seed_hyderabad_solar_demo(session, admin_user=admin_user)
+
+        # -------------------------------------------------------------
+        # 12. RECORD COUNT SUMMARY
         # -------------------------------------------------------------
         print("\n" + "=" * 70)
         print("DEMO ENVIRONMENT SEEDING COMPLETED SUCCESSFULLY!")
@@ -1063,6 +1202,9 @@ def seed_demo_environment() -> dict[str, int]:
             "In-App Notifications": session.query(Notification).count(),
             "Marketing Spend Records": session.query(MarketingSpend).count(),
             "Audit Logs": session.query(AuditLog).count(),
+            "Hyderabad Solar Towers": solar_demo["towers"],
+            "Hyderabad Solar Units": solar_demo["units"],
+            "Hyderabad Solar Draft Facts": solar_demo["facts"],
         }
 
         for entity, cnt in counts.items():
