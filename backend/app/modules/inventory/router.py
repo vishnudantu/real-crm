@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.modules.approvals.schemas import ApprovalRequestResponse
 from app.modules.approvals.service import request_unit_discount
-from app.modules.auth.dependencies import CurrentUser, ManagerUser, require_roles
+from app.modules.auth.dependencies import CurrentUser, require_permission, require_roles
 from app.modules.inventory import repository, service
 from app.modules.inventory.exceptions import UnitNotFoundError
 from app.modules.inventory.schemas import (
@@ -34,23 +34,23 @@ from app.modules.inventory.schemas import (
     UnitUpdateRequest,
 )
 from app.modules.users.models import RoleName, User
+from app.modules.users.permissions import (
+    INVENTORY_HOLDS,
+    INVENTORY_READ,
+    INVENTORY_WRITE,
+)
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
-# Permission boundary: MANAGER extends ADMIN/SALES_EXECUTIVE staff access only
-# for unit administration and hold workflows here. Project/fact administration,
-# unrelated sales workflows, operator impersonation, billing, tenant branding,
-# user role management, and feature flags remain on their existing dependencies.
-InventoryManager = ManagerUser
+# Inventory is the first permission-gated module. Built-in ADMIN/MANAGER/
+# SALES_EXECUTIVE access remains mapped by the permission registry; custom
+# roles receive only the explicit grants below. Other modules keep require_roles.
+InventoryManager = Annotated[User, Depends(require_permission(INVENTORY_WRITE))]
 
-HoldWriter = Annotated[
-    User,
-    Depends(require_roles(RoleName.ADMIN, RoleName.MANAGER, RoleName.SALES_EXECUTIVE)),
-]
+HoldWriter = Annotated[User, Depends(require_permission(INVENTORY_HOLDS))]
 
 DiscountRequester = Annotated[
-    User,
-    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
+    User, Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE))
 ]
 
 
@@ -81,7 +81,7 @@ def bulk_create_units_endpoint(
 
 @router.get("/units", response_model=UnitListResponse)
 def list_units_endpoint(
-    current_user: CurrentUser,
+    current_user: Annotated[User, Depends(require_permission(INVENTORY_READ))],
     db: Annotated[Session, Depends(get_db)],
     project_id: UUID | None = None,
     unit_status: Annotated[str | None, Query(alias="status")] = None,
@@ -108,7 +108,7 @@ def list_units_endpoint(
 @router.get("/units/{unit_id}", response_model=UnitDetailResponse)
 def get_unit_endpoint(
     unit_id: UUID,
-    current_user: CurrentUser,
+    current_user: Annotated[User, Depends(require_permission(INVENTORY_READ))],
     db: Annotated[Session, Depends(get_db)],
 ):
     unit = repository.get_unit(db, unit_id, tenant_id=current_user.tenant_id)
@@ -225,7 +225,7 @@ def convert_hold_endpoint(
 @router.get("/availability/{project_id}", response_model=AvailabilityResponse)
 def availability_endpoint(
     project_id: UUID,
-    current_user: CurrentUser,
+    current_user: Annotated[User, Depends(require_permission(INVENTORY_READ))],
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.availability_summary(db, tenant_id=current_user.tenant_id, project_id=project_id)
