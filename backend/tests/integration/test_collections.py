@@ -579,3 +579,148 @@ def test_tenant_isolation_calendar_and_stats(
         stats = service.stats(session, tenant_id=t2.id)
         assert stats["outstanding_paise"] == 0
         assert stats["recovered_30d_paise"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for code-review findings (commit 25cf795)
+# ---------------------------------------------------------------------------
+
+def test_waived_installment_never_queues_reminder(
+    test_session_factory: sessionmaker[Session],
+) -> None:
+    """HIGH: WAIVED installments must not queue payment demands even though
+    their live receipts are below the amount (a write-off, not an arrears)."""
+    today = date.today()
+    with test_session_factory() as session:
+        tenant, admin, _project, lead = _fixture(session)
+        session.add(SystemSetting(
+            tenant_id=tenant.id, key="collections_reminder_policy",
+            category="REMINDERS", value={"offsets": [0]},
+        ))
+        session.commit()
+        _booking, plan = _booking_with_installments(
+            session, admin, lead, dues=[("waived", 5000, today)],
+        )
+        installment = plan.installments[0]
+        installment.status = InstallmentStatus.WAIVED.value
+        session.commit()
+        counts = reminders.queue_due_reminders(session, tenant_id=tenant.id, today=today)
+        session.commit()
+        assert counts["queued"] == 0
+        assert counts["skipped_settled"] == 1
+        assert session.scalars(select(MessageDelivery)).all() == []
+
+
+def test_escalation_totals_include_subthreshold_overdue_installments(
+    test_session_factory: sessionmaker[Session],
+) -> None:
+    """MEDIUM: an account crossing the warning band must still count its
+    newer, below-threshold overdue installments in outstanding_paise and
+    overdue_installments (not just the threshold-crossing row)."""
+    today = date.today()
+    with test_session_factory() as session:
+        tenant, admin, _project, lead = _fixture(session)
+        session.add(SystemSetting(
+            tenant_id=tenant.id, key="collections_reminder_policy",
+            category="REMINDERS", value={
+                "escalation_thresholds": {"warning": 30, "critical": 60, "severe": 90},
+            },
+        ))
+        session.commit()
+        _booking, _plan = _booking_with_installments(
+            session, admin, lead,
+            dues=[
+                ("old-crosses", 1000, today - timedelta(days=45)),  # > warning 30
+                ("new-below", 7000, today - timedelta(days=5)),      # < warning 30
+            ],
+        )
+        result = service.escalations(session, tenant_id=tenant.id, today=today)
+        rows = result["groups"]["warning"]
+        assert len(rows) == 1
+        # Both overdue installments are counted: 1000 + 7000 outstanding.
+        assert rows[0]["outstanding_paise"] == 8000
+        assert rows[0]["overdue_installments"] == 2
+        assert rows[0]["days_overdue"] == 45
+
+
+def test_overdue_promise_fulfilled_by_payment_after_promise(
+    test_session_factory: sessionmaker[Session],
+) -> None:
+    """HIGH: a promise for the remaining balance on a part-paid installment
+    is fulfilled once the buyer pays the promised amount AFTER the promise —
+    it must not stay overdue just because lifetime receipts < promise amount."""
+    now = datetime.now(UTC)
+    today = now.date()
+    month = f"{today.year:04d}-{today.month:02d}"
+    with test_session_factory() as session:
+        tenant, admin, _project, lead = _fixture(session)
+        _booking, plan = _booking_with_installments(
+            session, admin, lead, dues=[("due", 10_000, today)],
+        )
+        installment = plan.installments[0]
+        # Buyer already paid 4000 before promising the remaining 6000.
+        postsales_service.record_receipt(
+            session, actor=admin,
+            payload=ReceiptCreateRequest(
+                installment_id=installment.id, amount_paise=4000, channel="UPI",
+                paid_at=now - timedelta(days=10),
+            ),
+        )
+        service.create_promise(
+            session, actor=admin, installment_id=installment.id,
+            amount_paise=6000, promised_on=today - timedelta(days=2), note="rest",
+        )
+        session.commit()
+        # Buyer pays the promised 6000 remainder after the promise was recorded.
+        # Use a fresh timestamp taken AFTER the promise row's created_at so the
+        # payment falls inside the post-promise fulfillment window; promised_on
+        # is already in the past, so only fulfillment is in question.
+        postsales_service.record_receipt(
+            session, actor=admin,
+            payload=ReceiptCreateRequest(
+                installment_id=installment.id, amount_paise=6000, channel="UPI",
+                paid_at=datetime.now(UTC),
+            ),
+        )
+        session.commit()
+        result = service.calendar(session, tenant_id=tenant.id, month=month)
+        flat = [row for day in result["days"] for row in day["rows"]]
+        # Promise is fulfilled -> not flagged overdue.
+        assert flat[0]["has_overdue_promise"] is False
+
+
+def test_scheduler_failed_tenant_day_not_marked_evaluated() -> None:
+    """MEDIUM: a UTC day with a failed tenant must stay open for retry."""
+    from app.modules.collections.scheduler import CollectionsReminderScheduler
+
+    sched = CollectionsReminderScheduler()
+    # Simulate a pass that returned a failed tenant.
+    import app.modules.collections.scheduler as sched_mod
+
+    class _FakeSession:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    calls = {"n": 0}
+
+    def fake_queue_all(session, *, today=None):
+        calls["n"] += 1
+        return {"queued": 0, "failed_tenants": 1}
+
+    orig_queue = sched_mod.queue_all_tenants
+    orig_session = sched_mod.SessionLocal
+    try:
+        sched_mod.queue_all_tenants = fake_queue_all
+        sched_mod.SessionLocal = lambda: _FakeSession()
+        sched._run_sync_check()
+        # Day not marked evaluated because a tenant failed -> retried next tick.
+        assert sched._last_evaluated is None
+        # Now all tenants succeed.
+        sched_mod.queue_all_tenants = lambda s, *, today=None: {"queued": 0, "failed_tenants": 0}
+        sched._run_sync_check()
+        assert sched._last_evaluated is not None
+    finally:
+        sched_mod.queue_all_tenants = orig_queue
+        sched_mod.SessionLocal = orig_session

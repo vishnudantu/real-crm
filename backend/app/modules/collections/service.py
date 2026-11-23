@@ -83,6 +83,48 @@ def _paid_map(session: Session, *, tenant_id: UUID, installment_ids: list[UUID])
     return {row[0]: int(row[1] or 0) for row in rows}
 
 
+def _paid_since_map(
+    session: Session, *, tenant_id: UUID, promises: list[InstallmentPromise]
+) -> dict[UUID, int]:
+    """Live receipts paid after each promise was recorded, keyed by promise id.
+
+    Used to decide whether a promise has been fulfilled: a promise is met once
+    the buyer has paid the promised amount in the window after making it,
+    regardless of how much was already paid on the installment beforehand.
+    """
+
+    installment_ids = list({p.installment_id for p in promises})
+    if not installment_ids:
+        return {}
+    receipt_rows = session.scalars(
+        select(Receipt).where(
+            Receipt.tenant_id == tenant_id,
+            Receipt.installment_id.in_(installment_ids),
+            *postsales_repository.live_receipt_conditions(),
+        )
+    ).all()
+    by_installment: dict[UUID, list[tuple[datetime, int]]] = {}
+    for receipt in receipt_rows:
+        paid_at = receipt.paid_at
+        if paid_at.tzinfo is None:
+            paid_at = paid_at.replace(tzinfo=UTC)
+        by_installment.setdefault(receipt.installment_id, []).append(
+            (paid_at, receipt.amount_paise)
+        )
+    result: dict[UUID, int] = {}
+    for promise in promises:
+        created = promise.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+        total = sum(
+            amount
+            for paid_at, amount in by_installment.get(promise.installment_id, [])
+            if paid_at >= created
+        )
+        result[promise.id] = total
+    return result
+
+
 def _lead_names(session: Session, *, tenant_id: UUID, lead_ids: list[UUID]) -> dict[UUID, str]:
     if not lead_ids:
         return {}
@@ -177,8 +219,12 @@ def calendar(
     )
     last_reminders = last_reminder_map(session, tenant_id=tenant_id, installment_ids=installment_ids)
     demand_status = _demand_letter_status(session, tenant_id=tenant_id, installment_ids=installment_ids)
-    # Overdue promises: promised_on has passed and the promise is still unpaid
-    # (live paid against the installment is below the promised amount).
+    # Overdue promises: promised_on has passed and the promise is still
+    # unfulfilled. A promise is a commitment to pay ``amount_paise``; it is
+    # fulfilled once live receipts paid SINCE the promise was recorded reach
+    # that amount. Comparing against the installment's lifetime total would
+    # wrongly keep a remaining-balance promise overdue on a part-paid
+    # installment even after the buyer pays the promised remainder.
     overdue_promises: set[UUID] = set()
     if installment_ids:
         promise_rows = session.scalars(
@@ -188,9 +234,15 @@ def calendar(
                 InstallmentPromise.promised_on < day,
             )
         ).all()
-        for promise in promise_rows:
-            if paid.get(promise.installment_id, 0) < promise.amount_paise:
-                overdue_promises.add(promise.installment_id)
+        if promise_rows:
+            paid_since = _paid_since_map(
+                session,
+                tenant_id=tenant_id,
+                promises=promise_rows,
+            )
+            for promise in promise_rows:
+                if paid_since.get(promise.id, 0) < promise.amount_paise:
+                    overdue_promises.add(promise.installment_id)
 
     days_map: dict[date, dict] = {}
     aging = _empty_aging()
@@ -347,9 +399,14 @@ def escalations(
         if installment.status not in OPEN_STATUSES:
             continue
         days_overdue = (day - installment.due_on).days
-        severity = _severity_for(days_overdue, thresholds)
-        if severity is None:
+        if days_overdue <= 0:
+            # Not yet overdue: contributes nothing to a collections account.
             continue
+        # Aggregate ALL open overdue installments so an account's
+        # outstanding_paise / overdue_installments reflect the whole arrears,
+        # including recent rows below the warning band. Severity is assigned
+        # afterwards from the worst (oldest) overdue age.
+        severity = _severity_for(days_overdue, thresholds) or "warning"
         outstanding = max(0, installment.amount_paise - live_paid)
         account = accounts.setdefault(booking.id, {
             "booking": booking,
@@ -373,6 +430,13 @@ def escalations(
             account["severity"] = severity
 
     groups: dict[str, list[dict]] = {"warning": [], "critical": [], "severe": []}
+    # Drop accounts that never actually crossed the warning threshold (all
+    # their overdue rows are younger than the warning band).
+    accounts = {
+        booking_id: account
+        for booking_id, account in accounts.items()
+        if _severity_for(account["days_overdue"], thresholds) is not None
+    }
     for account in accounts.values():
         booking = account["booking"]
         severity = account["severity"]

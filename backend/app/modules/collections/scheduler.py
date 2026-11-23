@@ -64,7 +64,15 @@ class CollectionsReminderScheduler:
             return
         with SessionLocal() as session:
             counts = queue_all_tenants(session, today=today)
-            self._last_evaluated = today
+            # Only mark the day fully evaluated when every tenant succeeded.
+            # A failed tenant keeps the day open so the next tick retries it
+            # (already-queued reminders for other tenants are deduped).
+            if counts.get("failed_tenants", 0) == 0:
+                self._last_evaluated = today
+            else:
+                logger.warning(
+                    "Collections reminder pass incomplete: %s", counts,
+                )
             if counts["queued"]:
                 logger.info("Collections reminders queued: %s", counts)
 

@@ -29,7 +29,13 @@ from app.modules.leads.models import Lead
 from app.modules.messaging.models import DeliveryStatus, MessageChannel, MessageDelivery
 from app.modules.messaging.providers.factory import provider_name
 from app.modules.postsales import repository as postsales_repository
-from app.modules.postsales.models import Installment, PaymentPlan, SaleBooking, SaleStatus
+from app.modules.postsales.models import (
+    Installment,
+    InstallmentStatus,
+    PaymentPlan,
+    SaleBooking,
+    SaleStatus,
+)
 from app.modules.tenancy.models import Tenant
 
 logger = logging.getLogger("propflow.collections.reminders")
@@ -156,6 +162,15 @@ def queue_due_reminders(
             if booking.status in (SaleStatus.CANCELLED.value, SaleStatus.CLOSED.value):
                 counts["skipped_settled"] += 1
                 continue
+            # Never demand payment on a terminal installment: WAIVED is a
+            # deliberate write-off and PAID is fully settled, regardless of
+            # any lag between receipt posting and status refresh.
+            if installment.status in (
+                InstallmentStatus.WAIVED.value,
+                InstallmentStatus.PAID.value,
+            ):
+                counts["skipped_settled"] += 1
+                continue
             live_paid = paid.get(installment.id, 0)
             if live_paid >= installment.amount_paise:
                 counts["skipped_settled"] += 1
@@ -220,9 +235,19 @@ def queue_due_reminders(
 
 def queue_all_tenants(session: Session, *, today: date | None = None) -> dict[str, int]:
     """Run the daily evaluation for every tenant. One commit per tenant so a
-    single tenant's failure cannot roll back the others' queued reminders."""
+    single tenant's failure cannot roll back the others' queued reminders.
 
-    totals = {"queued": 0, "skipped_existing": 0, "skipped_no_recipient": 0, "skipped_settled": 0}
+    Returns counters plus ``failed_tenants`` (count of tenants whose pass
+    raised). The scheduler only marks a UTC day fully evaluated when
+    ``failed_tenants`` is 0, so a failed tenant is retried on the next tick
+    instead of silently losing that day's reminders. Reminders for tenants
+    that succeeded are already committed and deduped, so a retry is safe.
+    """
+
+    totals = {
+        "queued": 0, "skipped_existing": 0, "skipped_no_recipient": 0,
+        "skipped_settled": 0, "failed_tenants": 0,
+    }
     tenant_ids = list(session.scalars(select(Tenant.id)).all())
     for tenant_id in tenant_ids:
         try:
@@ -232,6 +257,7 @@ def queue_all_tenants(session: Session, *, today: date | None = None) -> dict[st
                 totals[name] += value
         except Exception:  # noqa: BLE001 — one tenant must not stop the fleet
             session.rollback()
+            totals["failed_tenants"] += 1
             logger.exception("Collections reminder pass failed for tenant %s", tenant_id)
     return totals
 
