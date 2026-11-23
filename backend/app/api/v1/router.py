@@ -26,6 +26,7 @@ from app.modules.handover.router import router as handover_router
 from app.modules.integrations.connections_router import router as integration_connections_router
 from app.modules.integrations.router import router as integrations_router
 from app.modules.inventory.router import router as inventory_router
+from app.modules.inventory.intelligence.router import router as inventory_intelligence_router
 from app.modules.leads.router import router as leads_router
 from app.modules.messages.router import router as messages_router
 from app.modules.messaging.router import router as messaging_router
@@ -78,6 +79,7 @@ api_router.include_router(connectors_router)
 api_router.include_router(integration_connections_router)
 api_router.include_router(integrations_router)
 api_router.include_router(inventory_router)
+api_router.include_router(inventory_intelligence_router)
 api_router.include_router(billing_router)
 api_router.include_router(postsales_router)
 api_router.include_router(construction_router)
