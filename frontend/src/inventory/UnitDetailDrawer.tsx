@@ -10,10 +10,12 @@ import {
   LockOpen,
   Pencil,
   ShieldCheck,
+  Sun,
   Timer,
   Trash2,
   X,
 } from "lucide-react";
+import { SunPathStudio } from "../solar/SunPathStudio";
 import { useModalFocus } from "../shared/useModalFocus";
 import { errorMessage } from "../shared/apiRequest";
 import { useAdminUser } from "../admin/AdminAuthGuard";
@@ -62,6 +64,7 @@ export function UnitDetailDrawer({ unitId, onClose, onChanged }: UnitDetailDrawe
   const [unblocking, setUnblocking] = useState(false);
   const [unblockReason, setUnblockReason] = useState("");
   const [approved, setApproved] = useState(false);
+  const [showSunStudio, setShowSunStudio] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const {
@@ -253,8 +256,34 @@ export function UnitDetailDrawer({ unitId, onClose, onChanged }: UnitDetailDrawe
                 </p>
               )}
 
-              <section aria-label="Unit identity" className="rounded-xl border border-charcoal/10 bg-white p-4">
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+              <section aria-label="Sun and facing" className="overflow-hidden rounded-xl border border-charcoal/10">
+                <button
+                  type="button"
+                  onClick={() => setShowSunStudio((value) => !value)}
+                  aria-expanded={showSunStudio}
+                  className="flex w-full items-center justify-between gap-3 bg-white px-4 py-3 text-left transition-colors hover:bg-charcoal/[0.03]"
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold text-charcoal">
+                    <Sun aria-hidden="true" className="size-4 text-amber-500" />
+                    Sun & facing
+                  </span>
+                  <span className="text-[11px] font-medium text-charcoal/50">
+                    {showSunStudio ? "Hide" : "Explore"}
+                  </span>
+                </button>
+                {showSunStudio && (
+                  <SunPathStudio
+                    projectId={unit.project_id}
+                    projectName={`Unit ${unit.internal_code}`}
+                    unitId={unit.id}
+                    unitFacingText={unit.facing}
+                    unitTower={unit.tower}
+                    isAdmin={isAdmin}
+                  />
+                )}
+              </section>
+
+              <section aria-label="Unit identity" className="rounded-xl border border-charcoal/10 bg-white p-4">                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
                   <div>
                     <dt className="text-[0.65rem] font-semibold tracking-wider text-charcoal/50 uppercase">Configuration</dt>
                     <dd className="mt-0.5 font-medium">{unit.configuration ?? "—"}</dd>
