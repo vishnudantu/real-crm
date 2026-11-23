@@ -64,8 +64,18 @@ def _is_admin(user: User) -> bool:
 
 
 def _require_admin(user: User) -> None:
-    if not _is_admin(user):
-        raise InsufficientPermissionsError()
+    """Capability gate for admin-only project/fact writes.
+
+    Built-in ADMIN passes by role; a custom role passes with an explicit
+    projects.write grant. Row-level visibility scoping elsewhere still keys
+    on ``_is_admin`` of the built-in base role.
+    """
+    from app.modules.auth.dependencies import has_permission
+    from app.modules.users.permissions import PROJECTS_WRITE
+
+    if _is_admin(user) or has_permission(user, PROJECTS_WRITE):
+        return
+    raise InsufficientPermissionsError()
 
 
 def _status_value(value: ProjectStatus | str) -> str:

@@ -13,8 +13,9 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import AdminUser, require_roles
-from app.modules.users.models import RoleName, User
+from app.modules.auth.dependencies import require_permission
+from app.modules.users.models import User
+from app.modules.users.permissions import VOICE_INTEL_READ, VOICE_INTEL_WRITE
 from app.modules.voice_intel import service
 from app.modules.voice_intel.providers import TranscriptionProvider
 from app.modules.voice_intel.schemas import (
@@ -26,10 +27,10 @@ from app.modules.voice_intel.schemas import (
 
 router = APIRouter(prefix="/voice-intel", tags=["voice-intel"])
 
-StaffUser = Annotated[
-    User,
-    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
-]
+# Staff reads map to voice_intel.read; admin-only writes map to
+# voice_intel.write.
+StaffUser = Annotated[User, Depends(require_permission(VOICE_INTEL_READ))]
+WriteUser = Annotated[User, Depends(require_permission(VOICE_INTEL_WRITE))]
 
 
 def get_transcription_provider() -> TranscriptionProvider:
@@ -44,7 +45,7 @@ def get_transcription_provider() -> TranscriptionProvider:
 )
 def enqueue_transcription_endpoint(
     payload: TranscriptCreateRequest,
-    admin: AdminUser,
+    admin: WriteUser,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.enqueue_transcription(
@@ -58,7 +59,7 @@ def enqueue_transcription_endpoint(
 @router.post("/transcriptions/{transcript_id}/process", response_model=TranscriptResponse)
 def process_transcription_endpoint(
     transcript_id: UUID,
-    admin: AdminUser,
+    admin: WriteUser,
     db: Annotated[Session, Depends(get_db)],
     provider: Annotated[TranscriptionProvider, Depends(get_transcription_provider)],
 ):

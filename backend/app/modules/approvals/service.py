@@ -239,7 +239,10 @@ def decide(
 
     if decision not in (ApprovalStatus.APPROVED.value, ApprovalStatus.REJECTED.value):
         raise ValueError("decision must be APPROVED or REJECTED")
-    if actor.role.name != RoleName.ADMIN.value:
+    from app.modules.auth.dependencies import has_permission
+    from app.modules.users.permissions import APPROVALS_DECIDE
+
+    if not has_permission(actor, APPROVALS_DECIDE):
         raise ApprovalDecisionForbiddenError()
     request = _get_request(session, actor=actor, request_id=request_id)
     if request.status != ApprovalStatus.PENDING.value:

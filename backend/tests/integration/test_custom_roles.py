@@ -14,6 +14,7 @@ from app.modules.projects.models import Project, ProjectStatus
 from app.modules.tenancy.models import Tenant
 from app.modules.users.models import RoleName, User
 from app.modules.users.permissions import (
+    ENABLED_PERMISSION_KEYS,
     GRANTABLE_PERMISSIONS,
     PERMISSION_REGISTRY,
     PROTECTED_PERMISSIONS,
@@ -61,8 +62,8 @@ def test_permission_registry_shape_and_validation(
     user_factory: Callable[..., User],
     auth_headers: Callable[..., dict[str, str]],
 ) -> None:
-    assert len(PERMISSION_REGISTRY) == 30
-    assert len(GRANTABLE_PERMISSIONS) == 26
+    assert len(PERMISSION_REGISTRY) == 41
+    assert len(GRANTABLE_PERMISSIONS) == 37
     assert PROTECTED_PERMISSIONS == {
         "settings.manage", "users.manage", "roles.manage", "operator.access"
     }
@@ -83,14 +84,14 @@ def test_permission_registry_shape_and_validation(
     response = client.get("/api/v1/roles/permissions", headers=headers)
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["total"] == 30
+    assert body["total"] == 41
     assert {item["key"] for item in body["items"]} == set(PERMISSION_REGISTRY)
     assert all(
         {"key", "area", "description", "grantable", "enabled"} == set(item)
         for item in body["items"]
     )
     enabled = {item["key"] for item in body["items"] if item["enabled"]}
-    assert enabled == {"inventory.read", "inventory.write", "inventory.holds"}
+    assert enabled == ENABLED_PERMISSION_KEYS
     settings = next(item for item in body["items"] if item["key"] == "settings.manage")
     assert settings["grantable"] is False
     with pytest.raises(ValueError, match="Unknown grantable"):

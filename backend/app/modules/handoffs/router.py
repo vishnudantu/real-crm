@@ -29,6 +29,11 @@ from app.modules.users.models import User
 
 handoffs_router = APIRouter(prefix="/handoffs", tags=["Handoffs"])
 
+# Handoffs are buyer/staff shared: buyers request, track, and read their own
+# handoffs while staff assign and resolve them. The service scopes visibility
+# per role identity (buyers get 403 on status updates), so these stay open
+# CurrentUser endpoints rather than carrying a staff-only permission key.
+
 
 @handoffs_router.post(
     "",

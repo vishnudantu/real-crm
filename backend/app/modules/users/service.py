@@ -180,7 +180,13 @@ def create_user_by_admin(
             session.commit()
             raise RoleNotFoundError()
         user.custom_role_id = custom_role.id
-        user.role = repository.get_role_by_name(session, RoleName.SALES_EXECUTIVE)
+        # A custom role adds grants without replacing the built-in base role.
+        # The base identity stays in charge of row-level service scoping. When
+        # no role was requested explicitly the default BUYER intake identity
+        # is wrong for custom staff, so they keep the historical SALES_
+        # EXECUTIVE base instead of silently becoming a buyer.
+        if "role" not in payload.model_fields_set:
+            user.role = repository.get_role_by_name(session, RoleName.SALES_EXECUTIVE)
         session.commit()
         session.refresh(user)
     return user
@@ -214,8 +220,9 @@ def update_user(
             )
             if custom_role is None:
                 raise RoleNotFoundError()
+            # The custom role adds grants; the built-in base role (and its
+            # row-level service scoping) is deliberately left untouched.
             user.custom_role_id = custom_role.id
-            user.role = repository.get_role_by_name(session, RoleName.SALES_EXECUTIVE)
         else:
             requested_role = fields.pop("role")
             role = repository.get_role_by_name(session, requested_role)

@@ -10,7 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import CurrentUser
+from app.modules.auth.dependencies import CurrentUser, require_permission
+from app.modules.users.models import User
+from app.modules.users.permissions import FOLLOW_UPS_USE
 from app.modules.follow_ups.models import (
     FollowUpPriority,
     FollowUpStatus,
@@ -29,6 +31,11 @@ from app.modules.follow_ups import service
 
 router = APIRouter(prefix="/follow-ups", tags=["follow-ups"])
 
+# Staff-only follow-up console. Built-in ADMIN/SALES keep today's access;
+# custom roles need the explicit follow_ups.use grant. Row-level executive
+# scoping stays in the service keyed on the built-in base role.
+FollowUpUser = Annotated[User, Depends(require_permission(FOLLOW_UPS_USE))]
+
 
 class CancelFollowUpRequest(BaseModel):
     """Input payload to cancel a follow-up."""
@@ -45,7 +52,7 @@ class CancelFollowUpRequest(BaseModel):
 )
 def create_follow_up_endpoint(
     payload: FollowUpCreateRequest,
-    current_user: CurrentUser,
+    current_user: FollowUpUser,
     session: Annotated[Session, Depends(get_db)],
 ) -> FollowUpResponse:
     """Schedule a new follow-up interaction with an assigned lead."""
@@ -58,7 +65,7 @@ def create_follow_up_endpoint(
     summary="Get follow-up metrics",
 )
 def get_metrics_endpoint(
-    current_user: CurrentUser,
+    current_user: FollowUpUser,
     session: Annotated[Session, Depends(get_db)],
 ) -> FollowUpMetricsResponse:
     """Retrieve summary metrics: Total, Due Today, Overdue, Upcoming, Completed."""
@@ -71,7 +78,7 @@ def get_metrics_endpoint(
     summary="List follow-ups",
 )
 def list_follow_ups_endpoint(
-    current_user: CurrentUser,
+    current_user: FollowUpUser,
     session: Annotated[Session, Depends(get_db)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -106,7 +113,7 @@ def list_follow_ups_endpoint(
 )
 def get_follow_up_endpoint(
     follow_up_id: UUID,
-    current_user: CurrentUser,
+    current_user: FollowUpUser,
     session: Annotated[Session, Depends(get_db)],
 ) -> FollowUpResponse:
     """Retrieve complete details for a single follow-up."""
@@ -121,7 +128,7 @@ def get_follow_up_endpoint(
 def update_follow_up_endpoint(
     follow_up_id: UUID,
     payload: FollowUpUpdateRequest,
-    current_user: CurrentUser,
+    current_user: FollowUpUser,
     session: Annotated[Session, Depends(get_db)],
 ) -> FollowUpResponse:
     """Edit details of a pending follow-up."""
@@ -138,7 +145,7 @@ def update_follow_up_endpoint(
 def reschedule_follow_up_endpoint(
     follow_up_id: UUID,
     payload: FollowUpRescheduleRequest,
-    current_user: CurrentUser,
+    current_user: FollowUpUser,
     session: Annotated[Session, Depends(get_db)],
 ) -> FollowUpResponse:
     """Reschedule a follow-up to a new date and time."""
@@ -155,7 +162,7 @@ def reschedule_follow_up_endpoint(
 def complete_follow_up_endpoint(
     follow_up_id: UUID,
     payload: FollowUpCompleteRequest,
-    current_user: CurrentUser,
+    current_user: FollowUpUser,
     session: Annotated[Session, Depends(get_db)],
 ) -> FollowUpResponse:
     """Record follow-up outcome and mark completed."""
@@ -172,7 +179,7 @@ def complete_follow_up_endpoint(
 def cancel_follow_up_endpoint(
     follow_up_id: UUID,
     payload: CancelFollowUpRequest,
-    current_user: CurrentUser,
+    current_user: FollowUpUser,
     session: Annotated[Session, Depends(get_db)],
 ) -> FollowUpResponse:
     """Cancel a pending follow-up."""

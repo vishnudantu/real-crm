@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.modules.auth.dependencies import AdminUser, CurrentUser, require_roles
+from app.modules.auth.dependencies import CurrentUser, require_permission
 from app.modules.leads.exceptions import LeadCreateRateLimitedError
 from app.modules.leads.models import LeadSource, LeadStatus
 from app.modules.leads.schemas import (
@@ -42,14 +42,21 @@ from app.modules.leads.service import (
     update_lead,
     update_lead_status,
 )
-from app.modules.users.models import RoleName, User
+from app.modules.users.models import User
+from app.modules.users.permissions import (
+    LEADS_MANAGE,
+    LEADS_READ,
+    LEADS_WRITE,
+)
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
-LeadManagerUser = Annotated[
-    User,
-    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
-]
+# Admin-only surfaces (assignment, duplicate check, opt-out register) map to
+# leads.manage; list/get/history to leads.read; edits and status moves to
+# leads.write. Public intake, /mine, and opt-out stay open (buyer flows).
+LeadManagerUser = Annotated[User, Depends(require_permission(LEADS_READ))]
+LeadAdminUser = Annotated[User, Depends(require_permission(LEADS_MANAGE))]
+LeadWriterUser = Annotated[User, Depends(require_permission(LEADS_WRITE))]
 
 _CREATE_WINDOW_SECONDS = 60
 _create_attempts: dict[str, deque[float]] = {}
@@ -108,7 +115,7 @@ def create_lead_endpoint(
 )
 def check_duplicates_endpoint(
     query: Annotated[DuplicateCheckQuery, Query()],
-    admin: AdminUser,
+    admin: LeadAdminUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> DuplicateCheckResponse:
     """Return safe matching references for normalized email or phone values."""
@@ -170,7 +177,7 @@ def list_leads_endpoint(
     summary="List opted-out leads (admin only)",
 )
 def list_opted_out_leads_endpoint(
-    admin: AdminUser,
+    admin: LeadAdminUser,
     db: Annotated[Session, Depends(get_db)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -207,7 +214,7 @@ def list_my_leads_endpoint(
 def assign_lead_endpoint(
     lead_id: UUID,
     payload: LeadAssignRequest,
-    admin: AdminUser,
+    admin: LeadAdminUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> LeadAssignmentResponse:
     """Assign an active sales executive and preserve prior history."""
@@ -266,7 +273,7 @@ def get_lead_endpoint(
 def update_lead_endpoint(
     lead_id: UUID,
     payload: LeadUpdateRequest,
-    current_user: LeadManagerUser,
+    current_user: LeadWriterUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> LeadResponse:
     """Update contact, requirement, and consent fields.
@@ -291,7 +298,7 @@ def update_lead_endpoint(
 def update_lead_status_endpoint(
     lead_id: UUID,
     payload: LeadStatusUpdateRequest,
-    current_user: LeadManagerUser,
+    current_user: LeadWriterUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> LeadResponse:
     """Move a lead through the supported lifecycle transitions."""

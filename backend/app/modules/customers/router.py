@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import CurrentUser, require_roles
+from app.modules.auth.dependencies import CurrentUser, require_permission
 from app.modules.customers import service
 from app.modules.customers.schemas import (
     ContactCreateRequest,
@@ -31,15 +31,16 @@ from app.modules.customers.schemas import (
     OpportunityUpdateRequest,
     ContactSearchRequest,
 )
-from app.modules.users.models import RoleName, User
+from app.modules.users.models import User
+from app.modules.users.permissions import CUSTOMERS_READ, CUSTOMERS_WRITE
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 opportunities_router = APIRouter(prefix="/opportunities", tags=["opportunities"])
 
-ManagerUser = Annotated[
-    User,
-    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
-]
+# Read surfaces map to customers.read; writes and merges to customers.write.
+# Own-contact 360/timeline endpoints stay open CurrentUser (buyer flows).
+ManagerUser = Annotated[User, Depends(require_permission(CUSTOMERS_READ))]
+CustomerWriterUser = Annotated[User, Depends(require_permission(CUSTOMERS_WRITE))]
 
 
 @router.post(
@@ -97,7 +98,7 @@ def list_contacts_endpoint(
 )
 def create_contact_endpoint(
     payload: ContactCreateRequest,
-    current_user: ManagerUser,
+    current_user: CustomerWriterUser,
     response: Response,
     db: Annotated[Session, Depends(get_db)],
 ) -> ContactCreateResponse:
@@ -136,7 +137,7 @@ def create_contact_endpoint(
 def update_contact_endpoint(
     contact_id: UUID,
     payload: ContactUpdateRequest,
-    current_user: ManagerUser,
+    current_user: CustomerWriterUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> ContactResponse:
     """Editable: display_name / primary_language / notes only.
@@ -229,7 +230,7 @@ def get_duplicates_endpoint(
 def merge_contact_endpoint(
     contact_id: UUID,
     payload: MergeRequest,
-    current_user: ManagerUser,
+    current_user: CustomerWriterUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> MergeResponse:
     merge = service.merge_contacts(
@@ -249,7 +250,7 @@ def merge_contact_endpoint(
 )
 def revert_merge_endpoint(
     merge_id: UUID,
-    current_user: ManagerUser,
+    current_user: CustomerWriterUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> MergeResponse:
     merge = service.unmerge_contacts(db, actor=current_user, merge_id=merge_id)
@@ -265,7 +266,7 @@ def revert_merge_endpoint(
 def open_opportunity_endpoint(
     contact_id: UUID,
     payload: OpportunityCreateRequest,
-    current_user: ManagerUser,
+    current_user: CustomerWriterUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> OpportunityResponse:
     opp = service.open_opportunity(
@@ -306,7 +307,7 @@ def list_opportunities_endpoint(
 def update_opportunity_endpoint(
     opportunity_id: UUID,
     payload: OpportunityUpdateRequest,
-    current_user: ManagerUser,
+    current_user: CustomerWriterUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> OpportunityResponse:
     fields = payload.model_dump(exclude_unset=True)
