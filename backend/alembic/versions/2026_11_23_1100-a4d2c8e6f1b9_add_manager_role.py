@@ -12,6 +12,7 @@ built-in role is retained on downgrade because user rows may reference it.
 from __future__ import annotations
 
 from typing import Sequence, Union
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from alembic import op
@@ -33,7 +34,11 @@ def upgrade() -> None:
             sa.column("id", sa.Uuid()),
             sa.column("name", sa.String()),
             sa.column("description", sa.String()),
+            sa.column("created_at", sa.DateTime(timezone=True)),
         )
+        # Supply created_at explicitly: the roles table's server default is
+        # now(), which PostgreSQL evaluates but SQLite does not, so relying on
+        # the default breaks the insert on SQLite dev/test databases.
         op.bulk_insert(
             roles,
             [
@@ -41,6 +46,7 @@ def upgrade() -> None:
                     "id": uuid4(),
                     "name": "MANAGER",
                     "description": "Sales/inventory manager",
+                    "created_at": datetime.now(UTC),
                 }
             ],
         )
