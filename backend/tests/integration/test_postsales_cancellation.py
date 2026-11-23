@@ -433,6 +433,7 @@ def test_tenant_policy_override_changes_window_and_fee(
     with test_session_factory() as session:
         tenant, admin, _project, lead = _fixture(session)
         booking, _plan, _receipt = _booked_with_receipts(session, admin, lead)
+        assert booking.status == SaleStatus.PAYMENTS_IN_PROGRESS.value
         upsert_setting(
             session,
             tenant_id=tenant.id,
@@ -440,7 +441,7 @@ def test_tenant_policy_override_changes_window_and_fee(
             category="POSTSALES",
             value={
                 "free_cancel_days": 3,
-                "late_fee_percent": {"BOOKED": 20.0},
+                "late_fee_percent": {"PAYMENTS_IN_PROGRESS": 20.0},
             },
         )
         session.commit()
@@ -451,7 +452,7 @@ def test_tenant_policy_override_changes_window_and_fee(
         assert result.free_window is False
         assert result.fee_paise == int(COLLECTED_Paise * 0.20)
         assert result.policy["free_cancel_days"] == 3
-        assert result.policy["late_fee_percent"]["BOOKED"] == 20.0
+        assert result.policy["late_fee_percent"]["PAYMENTS_IN_PROGRESS"] == 20.0
 
 
 def test_invalid_tenant_policy_falls_back_to_defaults(
@@ -472,8 +473,10 @@ def test_invalid_tenant_policy_falls_back_to_defaults(
 
         result = cancel_booking(session, admin, booking.id, "Bad config")
 
+        # Invalid free_cancel_days AND invalid percent map fall back entirely;
+        # stage is PAYMENTS_IN_PROGRESS, so the default 50% rate applies.
         assert result.policy == dict(DEFAULT_POLICY)
-        assert result.fee_paise == int(COLLECTED_Paise * 0.10)
+        assert result.fee_paise == int(COLLECTED_Paise * 0.50)
 
 
 def test_policy_check_false_skips_fee_assessment(

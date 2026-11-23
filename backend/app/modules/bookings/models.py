@@ -24,6 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.tenancy import TenantOwned
+from app.modules.customers.models import Contact
 from app.modules.leads.models import Lead
 from app.modules.projects.models import Project
 from app.modules.users.models import User
@@ -184,6 +185,15 @@ class Booking(TenantOwned, Base):
         nullable=False,
         index=True,
     )
+    # Native link to the canonical customer identity (PF-008). Additive:
+    # lead_id stays the intake system-of-record; the UI no longer needs to
+    # mirror new customers into contacts to attribute a visit.
+    contact_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("contacts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     project_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("projects.id", ondelete="RESTRICT"),
@@ -244,6 +254,7 @@ class Booking(TenantOwned, Base):
 
     slot: Mapped[VisitSlot] = relationship(back_populates="bookings")
     lead: Mapped[Lead] = relationship()
+    contact: Mapped[Contact | None] = relationship()
     project: Mapped[Project] = relationship()
     buyer: Mapped[User] = relationship(foreign_keys=[buyer_id])
     executive: Mapped[User | None] = relationship(foreign_keys=[executive_id])

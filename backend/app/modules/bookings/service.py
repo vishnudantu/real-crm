@@ -7,11 +7,13 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.bookings import repository
 from app.modules.bookings.exceptions import (
     BookingConsentRequiredError,
+    BookingContactNotFoundError,
     BookingNotFoundError,
     BookingOwnershipError,
     DuplicateBookingError,
@@ -51,6 +53,7 @@ from app.modules.bookings.schemas import (
     VisitSlotResponse,
     VisitSlotUpdateRequest,
 )
+from app.modules.customers.models import Contact
 from app.modules.leads.exceptions import LeadNotFoundError
 from app.modules.leads.models import LeadStatus
 from app.modules.leads.repository import get_lead_by_id
@@ -374,6 +377,23 @@ def _get_visible_booking(
     raise BookingNotFoundError()
 
 
+def _validate_contact(session: Session, *, actor: User, contact_id: UUID) -> Contact:
+    """Resolve a booking's contact within the caller's tenant.
+
+    Missing or cross-tenant ids raise the same 404: existence of another
+    tenant's contact must never leak.
+    """
+
+    contact = session.scalar(
+        select(Contact).where(
+            Contact.id == contact_id, Contact.tenant_id == actor.tenant_id
+        )
+    )
+    if contact is None:
+        raise BookingContactNotFoundError()
+    return contact
+
+
 def create_booking(
     session: Session,
     *,
@@ -391,6 +411,10 @@ def create_booking(
 
     if not lead.consent_to_contact:
         raise BookingConsentRequiredError()
+
+    # 1b. Optional native contact link (canonical identity above the lead).
+    if payload.contact_id is not None:
+        _validate_contact(session, actor=actor, contact_id=payload.contact_id)
 
     if actor.role.name == RoleName.BUYER.value:
         if lead.email and lead.email != actor.email:
@@ -471,6 +495,7 @@ def create_booking(
         tenant_id=actor.tenant_id,
         slot_id=slot.id,
         lead_id=lead.id,
+        contact_id=payload.contact_id,
         project_id=slot.project_id,
         buyer_id=buyer_id,
         executive_id=executive_id,
@@ -947,6 +972,7 @@ def schedule_custom_booking(
     create_req = BookingCreateRequest(
         slot_id=slot.id,
         lead_id=lead.id,
+        contact_id=payload.contact_id,
         notes=payload.notes,
     )
     return create_booking(session, actor=actor, payload=create_req)

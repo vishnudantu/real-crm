@@ -199,3 +199,35 @@ class SaleLedgerResponse(BaseModel):
     commissions: list[BrokerCommissionResponse]
     collected_paise: int
     outstanding_paise: int
+
+
+class SaleBookingCancelRequest(BaseModel):
+    """Input payload for cancelling a sale booking under the policy engine."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: str | None = Field(default=None, max_length=500)
+    policy_check: bool = Field(
+        default=True,
+        description="Set false only for a goodwill waiver: skips fee assessment.",
+    )
+
+
+class SaleBookingCancelResponse(BaseModel):
+    """Cancellation outcome: the full fee/refund/unit breakdown, no money moved."""
+
+    booking_id: UUID
+    status: str
+    stage: str
+    reason: str | None
+    policy_applied: bool
+    policy: dict
+    free_window: bool
+    collected_paise: int
+    fee_paise: int
+    refund_due_paise: int
+    refunds_issued_paise: int
+    outstanding_paise: int
+    unit_release: dict | None
+    outbox_queued: int
+    cancelled_at: datetime | None
