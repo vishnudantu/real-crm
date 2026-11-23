@@ -10,6 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { errorMessage } from "../shared/apiRequest";
+import { ApiError } from "../auth/api";
 import { fetchAvailability, fetchUnits } from "./inventoryApi";
 import type { UnitStatus } from "./inventoryModel";
 import {
@@ -25,12 +26,26 @@ import {
   inventoryLabelClasses,
   inventorySecondaryButton,
   LEGEND_DOT_TONES,
+  ProjectBadge,
   StatusIcon,
 } from "./inventoryUi";
 import { useInventoryProjects } from "./useInventoryProjects";
 import { UnitDetailDrawer } from "./UnitDetailDrawer";
 
 const MAP_PAGE_SIZE = 1000;
+
+/** Render a 422 envelope's field-level detail (e.g. "project_id: invalid UUID")
+ * so the user sees *which* field failed, not just "Request validation failed". */
+function describeLoadError(error: unknown): string {
+  if (error instanceof ApiError && error.details.length > 0) {
+    const fields = error.details
+      .map((d) => [d.field, d.message].filter(Boolean).join(": "))
+      .filter(Boolean)
+      .join("; ");
+    if (fields) return `${error.message} — ${fields}`;
+  }
+  return errorMessage(error, "Failed to load inventory.");
+}
 
 export function InventoryMapPage() {
   const { projects, isLoading: projectsLoading, isError: projectsError, error: projectsLoadError } =
@@ -74,6 +89,7 @@ export function InventoryMapPage() {
   const groups = useMemo(() => groupUnitsByFloorTower(filteredUnits), [filteredUnits]);
   const units = unitsQuery.data?.items ?? [];
   const counts = availabilityQuery.data?.counts ?? {};
+  const selectedProject = projects.find((project) => project.id === projectId);
 
   // Active tower: default to the first, reset when the project changes, and
   // fall back to the first tower if the current selection no longer matches.
@@ -97,6 +113,11 @@ export function InventoryMapPage() {
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-charcoal sm:text-3xl">
             Live unit map
           </h1>
+          {selectedProject && (
+            <div className="mt-2">
+              <ProjectBadge name={selectedProject.name} />
+            </div>
+          )}
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-charcoal/60">
             Scan availability by tower and floor, then open any unit to manage its hold,
             reservation, or booking lifecycle. Status refreshes every 30 seconds.
@@ -264,7 +285,7 @@ export function InventoryMapPage() {
 
         {(unitsQuery.isError || availabilityQuery.isError) && (
           <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
-            {errorMessage(unitsQuery.error ?? availabilityQuery.error, "Failed to load inventory.")}
+            {describeLoadError(unitsQuery.error ?? availabilityQuery.error)}
             <button type="button" onClick={() => void refresh()} className="ml-2 font-semibold underline">
               Retry
             </button>

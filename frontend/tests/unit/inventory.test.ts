@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   bulkCsvParse,
+  buildUnitsQuery,
   groupUnitsByFloorTower,
   holdCountdown,
   isUuid,
@@ -13,6 +14,27 @@ import {
   UNASSIGNED_TOWER,
 } from "../../src/inventory/inventoryModel.ts";
 import type { Unit } from "../../src/inventory/inventoryModel.ts";
+
+test("buildUnitsQuery omits empty/whitespace project_id to avoid 422", () => {
+  assert.equal(buildUnitsQuery({ projectId: "" }), "page=1&page_size=20");
+  assert.equal(buildUnitsQuery({ projectId: "   " }), "page=1&page_size=20");
+  assert.equal(
+    buildUnitsQuery({ projectId: "", status: "AVAILABLE", pageSize: 100 }),
+    "page=1&page_size=100&status=AVAILABLE",
+  );
+});
+
+test("buildUnitsQuery includes a real project_id and filters", () => {
+  assert.equal(
+    buildUnitsQuery({ projectId: "p1", status: "ON_HOLD", page: 2, pageSize: 100 }),
+    "project_id=p1&page=2&page_size=100&status=ON_HOLD",
+  );
+  // ALL status is never sent as a filter.
+  assert.equal(
+    buildUnitsQuery({ projectId: "p1", status: "ALL" }),
+    "project_id=p1&page=1&page_size=20",
+  );
+});
 
 function unit(overrides: Partial<Unit>): Unit {
   return {

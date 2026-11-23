@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
-
 import pytest
 
 from app.modules.solar.scoring import SunScore, score_unit_facing
@@ -93,12 +91,6 @@ class TestPricingHint:
 class TestScoreDataclass:
     def test_returns_sun_score(self) -> None:
         score = score_unit_facing(90, _HYD_LAT, _HYD_LNG)
-        assert isinstance(score, SunScore)
-
-    def test_custom_scoring_date(self) -> None:
-        score = score_unit_facing(
-            90, _HYD_LAT, _HYD_LNG, scoring_date=date(2026, 6, 21)
-        )
         assert isinstance(score, SunScore)
 
     def test_bearing_normalized(self) -> None:

@@ -25,6 +25,7 @@ import {
   inventoryLabelClasses,
   inventoryPrimaryButton,
   inventorySecondaryButton,
+  ProjectBadge,
   StatusBadge,
 } from "./inventoryUi";
 import { useInventoryProjects } from "./useInventoryProjects";
@@ -143,6 +144,11 @@ export function InventoryUnitsPage() {
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-charcoal sm:text-3xl">
             Units & bulk import
           </h1>
+          {selectedProject && (
+            <div className="mt-2">
+              <ProjectBadge name={selectedProject.name} />
+            </div>
+          )}
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-charcoal/60">
             Page through every canonical unit, then paste CSV to validate and import new stock
             with a server-side dry run before anything is committed.

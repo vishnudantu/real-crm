@@ -20,18 +20,13 @@ Corner units (e.g. NE, SE, NW, SW) receive a small bonus for cross-ventilation.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 
 from app.modules.solar.compass import bearing_to_compass, normalize_bearing
-from app.modules.solar.engine import solar_position
 
 __all__ = [
     "SunScore",
     "score_unit_facing",
 ]
-
-# Representative date for scoring (vernal equinox — stable day length).
-_SCORING_DATE = date(2026, 3, 20)
 
 
 @dataclass(frozen=True)
@@ -129,18 +124,6 @@ def _pricing_premium(exposure: str, label: str) -> tuple[float, float, str]:
     return min_pct, max_pct, advisory
 
 
-def _sun_elevation_at_noon(latitude: float, longitude: float) -> float:
-    """Compute solar elevation at solar noon on the scoring date."""
-    from datetime import UTC, datetime
-
-    noon = datetime(
-        _SCORING_DATE.year, _SCORING_DATE.month, _SCORING_DATE.day,
-        12, 0, 0, tzinfo=UTC,
-    )
-    pos = solar_position(latitude, longitude, noon)
-    return pos.elevation
-
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -150,8 +133,6 @@ def score_unit_facing(
     facing_bearing: float,
     latitude: float,
     longitude: float,
-    *,
-    scoring_date: date | None = None,
 ) -> SunScore:
     """Compute a sun-exposure score for a unit.
 
@@ -163,9 +144,6 @@ def score_unit_facing(
         Site latitude in degrees.
     longitude : float
         Site longitude in degrees.
-    scoring_date : date, optional
-        Representative date for solar position calculation. Defaults to
-        the vernal equinox (March 20) for stable day-length assumptions.
 
     Returns
     -------
