@@ -115,6 +115,7 @@ export const teamBenefits: TeamBenefit[] = [
       "One desk for portal, website, social and hoarding enquiries.",
       "Replies built only from the sales head's approved project facts.",
       "A clear path from first enquiry to a confirmed site visit.",
+      "Sun-path and facing intelligence for every tower and unit, computed from the site.",
     ],
     imageCaption: "The Grove / Enquiry desk",
   },
