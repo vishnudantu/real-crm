@@ -13,8 +13,11 @@ import {
   Plus,
   RotateCcw,
   Shield,
+  Sun,
   X,
 } from "lucide-react";
+import { SunPathStudio } from "../../solar/SunPathStudio";
+import { useAdminUser } from "../AdminAuthGuard";
 import type {
   AdminFactStatus,
   CreateFactPayload,
@@ -46,9 +49,11 @@ export function FactSheetDrawer({
   onClose,
   onFactsChanged,
 }: FactSheetDrawerProps) {
+  const { user } = useAdminUser();
   const [facts, setFacts] = useState<FactItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"facts" | "sun">("facts");
 
   // Filters
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
@@ -304,6 +309,48 @@ export function FactSheetDrawer({
             </div>
           )}
 
+          {/* Workspace tabs */}
+          <div className="flex gap-1 border-b border-charcoal/10 bg-white px-6 pt-2" role="tablist" aria-label="Project workspace">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "facts"}
+              onClick={() => setActiveTab("facts")}
+              className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
+                activeTab === "facts"
+                  ? "border-charcoal text-charcoal"
+                  : "border-transparent text-charcoal/50 hover:text-charcoal"
+              }`}
+            >
+              <FileText className="size-3.5" />
+              Fact sheet
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "sun"}
+              onClick={() => setActiveTab("sun")}
+              className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
+                activeTab === "sun"
+                  ? "border-amber-500 text-charcoal"
+                  : "border-transparent text-charcoal/50 hover:text-charcoal"
+              }`}
+            >
+              <Sun className="size-3.5" />
+              Sun & facing
+            </button>
+          </div>
+
+          {activeTab === "sun" ? (
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <SunPathStudio
+                projectId={project.id}
+                projectName={project.name}
+                isAdmin={user.role.name === "ADMIN"}
+              />
+            </div>
+          ) : (
+            <>
           {/* Controls Bar: Filters & Add Action */}
           <div className="flex flex-col gap-2.5 border-b border-charcoal/10 bg-white/70 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
             {/* Category Dropdown */}
@@ -700,6 +747,8 @@ export function FactSheetDrawer({
                 );
               })}
           </div>
+            </>
+          )}
         </div>
       </div>
 
