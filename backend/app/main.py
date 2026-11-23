@@ -67,6 +67,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             messaging_scheduler.batch_size = app_settings.messaging_dispatch_batch_size
             messaging_scheduler.start()
 
+        if (
+            getattr(app_settings, "collections_reminder_enabled", True)
+            and app_settings.environment not in ("test", "testing")
+        ):
+            from app.modules.collections.scheduler import collections_reminder_scheduler
+
+            collections_reminder_scheduler.start()
+
         yield
 
         logger.info("Shutting down %s", app_settings.app_name)
@@ -85,6 +93,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             from app.modules.messaging.scheduler import messaging_scheduler
 
             await messaging_scheduler.stop()
+
+        if (
+            getattr(app_settings, "collections_reminder_enabled", True)
+            and app_settings.environment not in ("test", "testing")
+        ):
+            from app.modules.collections.scheduler import collections_reminder_scheduler
+
+            await collections_reminder_scheduler.stop()
 
         dispose_engine()
 

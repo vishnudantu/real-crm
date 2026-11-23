@@ -277,3 +277,10 @@ export function onboardTenant(
     body: JSON.stringify(payload),
   });
 }
+
+export function fetchRevenueSummary(months = 6): Promise<import("./revenueModel").RevenueSummaryResponse> {
+  return bearerRequest<import("./revenueModel").RevenueSummaryResponse>(
+    `/operator/revenue/summary?months=${months}`,
+    SESSION,
+  );
+}

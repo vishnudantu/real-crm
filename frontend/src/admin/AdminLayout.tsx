@@ -31,14 +31,14 @@ function isPathActive(pathname: string, item: AdminNavigationItem): boolean {
 }
 
 export function AdminLayout() {
-  const { user } = useAdminUser();
+  const { user, staffOnly } = useAdminUser();
   const { branding } = useTenant();
   const { features } = useFeatures();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const shouldReduceMotion = useReducedMotion();
-  const groups = useMemo(() => buildAdminNav(features), [features]);
-  const mobilePrimary = useMemo(() => buildAdminMobileNav(features), [features]);
+  const groups = useMemo(() => buildAdminNav(features, user.role.name, staffOnly), [features, user.role.name, staffOnly]);
+  const mobilePrimary = useMemo(() => buildAdminMobileNav(features, user.role.name, staffOnly), [features, user.role.name, staffOnly]);
   const items = useMemo(() => groups.flatMap((group) => group.items), [groups]);
   const currentItem = items
     .flatMap((item) => [...(item.children ?? []), item])

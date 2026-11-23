@@ -18,6 +18,8 @@ class RoleResponse(BaseModel):
     id: UUID
     name: str
     description: str | None = None
+    is_builtin: bool = True
+    permissions: list[str] = Field(default_factory=list)
 
 
 class UserResponse(BaseModel):
@@ -31,6 +33,7 @@ class UserResponse(BaseModel):
     email: str
     phone: str | None = None
     role: RoleResponse
+    custom_role: RoleResponse | None = None
     is_active: bool
     is_verified: bool
     created_at: datetime
@@ -59,6 +62,7 @@ class UserUpdateRequest(BaseModel):
     full_name: str | None = Field(default=None, min_length=2, max_length=255)
     phone: str | None = Field(default=None, max_length=32)
     role: RoleName | None = None
+    custom_role_id: UUID | None = None
 
     @field_validator("full_name", mode="before")
     @classmethod
@@ -83,6 +87,10 @@ class UserUpdateRequest(BaseModel):
             raise ValueError("full_name cannot be null.")
         if "role" in self.model_fields_set and self.role is None:
             raise ValueError("role cannot be null.")
+        if "custom_role_id" in self.model_fields_set and self.custom_role_id is None:
+            raise ValueError("custom_role_id cannot be null.")
+        if "role" in self.model_fields_set and "custom_role_id" in self.model_fields_set:
+            raise ValueError("Choose either a built-in role or a custom role.")
         return self
 
 
@@ -104,6 +112,7 @@ class UserCreateRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     phone: str | None = Field(default=None, max_length=32)
     role: RoleName = RoleName.BUYER
+    custom_role_id: UUID | None = None
     is_active: bool = True
 
     @field_validator("full_name", mode="before")

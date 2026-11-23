@@ -25,6 +25,7 @@ import type { UpdateTenantBrandingPayload } from "../tenant/types";
 import { BrandingSettingsTab } from "./settings/BrandingSettingsTab";
 import { AIAssistantSettingsTab } from "./settings/AIAssistantSettingsTab";
 import { LanguageSettingsPanel } from "./settings/LanguageSettingsPanel";
+import { RolesSettingsTab } from "./roles/RolesSettingsTab";
 import { WebsiteWidgetInstaller } from "../omnichannel/WebsiteWidgetInstaller";
 import type {
   AllSystemSettingsResponse,
@@ -73,6 +74,7 @@ export type SettingsTab =
   | "lead_assignment"
   | "audit_logs"
   | "branding"
+  | "roles"
   | "widget";
 
 export interface SystemSettingsPageProps {
@@ -81,7 +83,7 @@ export interface SystemSettingsPageProps {
 
 const VALID_TABS = new Set<SettingsTab>([
   "reminders", "notifications", "templates", "messaging", "ai_assistant",
-  "languages", "lead_assignment", "audit_logs", "branding", "widget",
+  "languages", "lead_assignment", "audit_logs", "branding", "roles", "widget",
 ]);
 
 interface SettingsTabDefinition {
@@ -94,6 +96,7 @@ interface SettingsTabDefinition {
 
 const SETTINGS_TABS: readonly SettingsTabDefinition[] = [
   { id: "branding", label: "Branding", to: "/admin/settings/branding", icon: Palette },
+  { id: "roles", label: "Roles", to: "/admin/settings/roles", icon: Shield },
   { id: "ai_assistant", label: "AI Assistant", to: "/admin/settings/ai", icon: Bot },
   { id: "languages", label: "Languages", to: "/admin/settings/languages", icon: Languages },
   { id: "reminders", label: "Reminders & Alerts", to: "/admin/settings/reminders", icon: Bell },
@@ -196,7 +199,7 @@ export function SystemSettingsPage({ initialTab }: SystemSettingsPageProps = {})
     const load = async () => {
       setLoading(true);
       const requests: Promise<void>[] = [];
-      if (activeTab === "widget") {
+      if (activeTab === "widget" || activeTab === "roles") {
         setLoading(false);
         return;
       }
@@ -311,6 +314,7 @@ export function SystemSettingsPage({ initialTab }: SystemSettingsPageProps = {})
           const Icon = tab.icon;
           return <NavLink key={tab.id} to={tab.to} end className={activeTab === tab.id ? "inline-flex items-center gap-2 rounded-xl bg-white px-3.5 py-2 text-charcoal shadow-xs" : "inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-charcoal/60 transition-colors hover:bg-white/60 hover:text-charcoal"}><Icon aria-hidden="true" className="size-3.5" /><span>{tab.label}</span></NavLink>;
         })}
+        <NavLink to="/admin/settings/ai-providers" className="inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-charcoal/60 transition-colors hover:bg-white/60 hover:text-charcoal"><Bot aria-hidden="true" className="size-3.5" /><span>AI Providers</span></NavLink>
       </nav>
 
       {loading ? (
@@ -318,6 +322,7 @@ export function SystemSettingsPage({ initialTab }: SystemSettingsPageProps = {})
       ) : (
         <div>
           {activeTab === "branding" && <BrandingSettingsTab isSaving={isSaving} onUpdate={handleUpdateBranding} />}
+          {activeTab === "roles" && <RolesSettingsTab />}
           {activeTab === "widget" && <WebsiteWidgetInstaller />}
           {activeTab === "reminders" && settings && <RemindersConfigTab settings={settings.reminders} onUpdate={handleUpdateReminders} onTriggerScan={handleTriggerReminders} isSaving={isSaving} isTriggering={isTriggering} />}
           {activeTab === "ai_assistant" && settings && <AIAssistantSettingsTab aiSettings={settings.ai_assistant} onUpdateAI={handleUpdateAI} isSaving={isSaving} />}

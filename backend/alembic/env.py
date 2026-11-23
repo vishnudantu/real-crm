@@ -21,6 +21,7 @@ from app.modules.billing import models as billing_models  # noqa: F401
 from app.modules.bookings import models as bookings_models  # noqa: F401
 from app.modules.buyer_docs import models as buyer_docs_models  # noqa: F401
 from app.modules.brokers import models as brokers_models  # noqa: F401
+from app.modules.collections import models as collections_models  # noqa: F401
 from app.modules.connectors import models as connectors_models  # noqa: F401
 from app.modules.connect_dialer import models as connect_dialer_models  # noqa: F401
 from app.modules.construction import models as construction_models  # noqa: F401
@@ -30,6 +31,7 @@ from app.modules.dashboard import models as dashboard_models  # noqa: F401
 from app.modules.documents import models as documents_models  # noqa: F401
 from app.modules.follow_ups import models as follow_ups_models  # noqa: F401
 from app.modules.handoffs import models as handoffs_models  # noqa: F401
+from app.modules.handover import models as handover_models  # noqa: F401
 from app.modules.integrations import models as integrations_models  # noqa: F401
 from app.modules.inventory import models as inventory_models  # noqa: F401
 from app.modules.leads import models as leads_models  # noqa: F401

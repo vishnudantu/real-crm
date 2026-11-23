@@ -38,8 +38,20 @@ TRANSACTIONAL_EVENTS = frozenset({
     "booking_confirmed",
     "booking_cancelled",
     "booking_rescheduled",
+    "site_visit.booked",
+    "site_visit.completed",
+    "site_visit.cancelled",
+    "site_visit.no_show",
+    "sale_booking.created",
+    "document.receipt_issued",
+    "document.demand_letter_issued",
+    "handover.completed",
     "visit_reminder_24h",
     "visit_reminder_2h",
+    # Collections reminders serve the existing sale contract (a scheduled
+    # payment demand), so they follow the contract-performance basis:
+    # suppressed only by explicit opt-out, never by absent marketing consent.
+    "collection.reminder",
     "lead_assigned",
     "handoff_assigned",
     "handoff_status",

@@ -129,8 +129,18 @@ def _require_lead_manager(user: User) -> None:
 
 
 def _require_admin(user: User) -> None:
-    if not _is_admin(user):
-        raise InsufficientPermissionsError()
+    """Capability gate for admin-only lead management surfaces.
+
+    Built-in ADMIN passes by role; a custom role passes with an explicit
+    leads.manage grant. Row-level scoping elsewhere still uses ``_is_admin``
+    on the built-in base role only.
+    """
+    from app.modules.auth.dependencies import has_permission
+    from app.modules.users.permissions import LEADS_MANAGE
+
+    if _is_admin(user) or has_permission(user, LEADS_MANAGE):
+        return
+    raise InsufficientPermissionsError()
 
 
 def _pages(total: int, page_size: int) -> int:
@@ -462,7 +472,13 @@ def list_leads(
     _require_lead_manager(actor)
     search_value = search.strip() if search and search.strip() else None
 
-    if _is_admin(actor):
+    # The opt-out register is an admin capability, not row scoping: a custom
+    # role with leads.manage may read it even when the base role is not ADMIN.
+    from app.modules.auth.dependencies import has_permission
+    from app.modules.users.permissions import LEADS_MANAGE
+
+    can_manage = _is_admin(actor) or has_permission(actor, LEADS_MANAGE)
+    if can_manage:
         active_project_only = False
         executive_filter = assigned_executive_id
     else:

@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   CalendarCheck,
   FileText,
+  FolderLock,
   UserCheck,
 } from "lucide-react";
 import { useBuyerUser } from "./BuyerAuthGuard";
@@ -23,6 +24,11 @@ import {
   type BuyerBooking,
   type BuyerConversation,
 } from "./api";
+import {
+  buyerDocumentKeys,
+  fetchBuyerDocumentRequests,
+} from "./documents/buyerDocumentsApi";
+import { isOpenRequest } from "./documents/buyerDocumentsModel";
 
 export function BuyerDashboardPage() {
   const { user } = useBuyerUser();
@@ -60,6 +66,15 @@ export function BuyerDashboardPage() {
     queryKey: ["buyer", "notifications"],
     queryFn: () => fetchBuyerNotifications(1, 10),
   });
+
+  // Open staff document requests (/mine/requests returns only OPEN ones).
+  const { data: docRequestsData } = useQuery({
+    queryKey: buyerDocumentKeys.requests(),
+    queryFn: () => fetchBuyerDocumentRequests(),
+    retry: false,
+  });
+  const pendingDocRequests =
+    docRequestsData?.items.filter(isOpenRequest).length ?? 0;
 
   const firstName = user.full_name.trim().split(/\s+/)[0] || "Valued Buyer";
 
@@ -479,7 +494,7 @@ export function BuyerDashboardPage() {
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {/* Card 1: Conversations */}
           <Link
             to="/buyer/conversations"
@@ -546,7 +561,37 @@ export function BuyerDashboardPage() {
             </div>
           </Link>
 
-          {/* Card 4: My Profile */}
+          {/* Card 4: My Documents */}
+          <Link
+            to="/buyer/documents"
+            className="group flex flex-col justify-between rounded-2xl border border-charcoal/10 bg-white p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-forest/40 hover:shadow-sm"
+          >
+            <div className="space-y-3">
+              <div className="relative grid size-10 place-items-center rounded-xl bg-ivory text-forest border border-charcoal/10 group-hover:bg-forest group-hover:text-ivory transition-colors">
+                <FolderLock className="size-5" />
+                {pendingDocRequests > 0 && (
+                  <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[0.6rem] font-bold text-white">
+                    {pendingDocRequests > 9 ? "9+" : pendingDocRequests}
+                  </span>
+                )}
+              </div>
+              <h3 className="font-sans font-semibold tracking-tight text-lg font-normal text-charcoal group-hover:text-forest transition-colors">
+                My Documents
+              </h3>
+              <p className="text-xs text-charcoal/65 leading-relaxed">
+                Upload identity and property documents securely and follow their
+                verification status.
+                {pendingDocRequests > 0 &&
+                  ` ${pendingDocRequests} ${pendingDocRequests === 1 ? "request" : "requests"} awaiting you.`}
+              </p>
+            </div>
+            <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-forest">
+              <span>Open vault</span>
+              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
+            </div>
+          </Link>
+
+          {/* Card 5: My Profile */}
           <Link
             to="/buyer/profile"
             className="group flex flex-col justify-between rounded-2xl border border-charcoal/10 bg-white p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-forest/40 hover:shadow-sm"

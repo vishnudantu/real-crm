@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Edit3, Info, LoaderCircle, X } from "lucide-react";
-import type { AdminRoleName, UpdateUserPayload, UserItem } from "../adminModel";
+import type { AdminRoleName, RoleAssignmentSelection, UpdateUserPayload, UserItem } from "../adminModel";
+import { ADMIN_ROLE_OPTIONS, updateRoleAssignmentFields } from "../adminModel";
 import { updateUser } from "../api";
+import { fetchCustomRoles } from "../roles/roleApi";
 
 type EditUserModalProps = {
   user: UserItem | null;
@@ -10,6 +13,12 @@ type EditUserModalProps = {
   onClose: () => void;
   onSuccess: (updatedUser: UserItem) => void;
 };
+
+function builtinRoleOrDefault(name: string): AdminRoleName {
+  return ADMIN_ROLE_OPTIONS.some((option) => option.value === name)
+    ? (name as AdminRoleName)
+    : "SALES_EXECUTIVE";
+}
 
 export function EditUserModal({
   user,
@@ -21,15 +30,25 @@ export function EditUserModal({
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<AdminRoleName>("BUYER");
+  const [customRoleId, setCustomRoleId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const customRolesQuery = useQuery({
+    queryKey: ["admin", "roles", "custom"],
+    queryFn: fetchCustomRoles,
+    enabled: isOpen,
+    staleTime: 60_000,
+  });
+  const customRoles = customRolesQuery.data?.items ?? [];
 
   useEffect(() => {
     if (user) {
       setFullName(user.full_name);
       setPhone(user.phone || "");
-      setRole(user.role.name);
+      setRole(builtinRoleOrDefault(user.role.name));
+      setCustomRoleId(user.custom_role?.id ?? null);
       setError(null);
     }
   }, [user]);
@@ -55,15 +74,25 @@ export function EditUserModal({
         phone: phone.trim() || null,
       };
 
-      if (!isSelf && role !== user.role.name) {
-        payload.role = role;
+      if (!isSelf) {
+        const assignment: RoleAssignmentSelection = {
+          role,
+          customRoleId,
+        };
+        Object.assign(
+          payload,
+          updateRoleAssignmentFields(assignment, {
+            roleName: user.role.name,
+            customRoleId: user.custom_role?.id ?? null,
+          }),
+        );
       }
 
       const updated = await updateUser(user.id, payload);
       onSuccess(updated);
       onClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to update user profile.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update user profile.");
     } finally {
       setLoading(false);
     }
@@ -168,39 +197,68 @@ export function EditUserModal({
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
-                {[
-                  {
-                    id: "SALES_EXECUTIVE" as AdminRoleName,
-                    label: "Sales Exec",
-                    desc: "Assigned leads & visits",
-                  },
-                  {
-                    id: "BUYER" as AdminRoleName,
-                    label: "Buyer",
-                    desc: "Property discovery",
-                  },
-                  {
-                    id: "ADMIN" as AdminRoleName,
-                    label: "Admin",
-                    desc: "Full privileges",
-                  },
-                ].map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => setRole(r.id)}
-                    className={`flex flex-col items-start rounded-xl border p-2.5 text-left transition-all ${
-                      role === r.id
-                        ? "border-charcoal bg-charcoal/5 ring-1 ring-charcoal"
-                        : "border-charcoal/15 bg-white hover:border-charcoal/30"
-                    }`}
-                  >
-                    <span className="text-xs font-bold text-charcoal">
-                      {r.label}
-                    </span>
-                    <span className="text-[10px] text-charcoal/60">{r.desc}</span>
-                  </button>
-                ))}
+            {(
+              ADMIN_ROLE_OPTIONS.some((option) => option.value === user.role.name)
+                ? ADMIN_ROLE_OPTIONS
+                : [
+                    ...ADMIN_ROLE_OPTIONS,
+                    {
+                      value: user.role.name as AdminRoleName,
+                      label: user.role.name.replaceAll("_", " "),
+                      description: "Currently assigned",
+                    },
+                  ]
+            ).map((r) => (
+                <button
+                  key={r.value}
+                  type="button"
+                  onClick={() => setRole(r.value)}
+                  className={`flex flex-col items-start rounded-xl border p-2.5 text-left transition-all ${
+                    role === r.value
+                      ? "border-charcoal bg-charcoal/5 ring-1 ring-charcoal"
+                      : "border-charcoal/15 bg-white hover:border-charcoal/30"
+                  }`}
+                >
+                  <span className="text-xs font-bold text-charcoal">
+                    {r.label}
+                  </span>
+                  <span className="text-[10px] text-charcoal/60">{r.description}</span>
+                </button>
+              ))}
+              </div>
+            )}
+
+            {!isSelf && (
+              <div className="mt-3 flex flex-col gap-1.5">
+                <label htmlFor="edit-custom-role" className="text-xs font-semibold text-charcoal">
+                  Custom Role (Optional)
+                </label>
+                <select
+                  id="edit-custom-role"
+                  value={customRoleId ?? ""}
+                  onChange={(e) => setCustomRoleId(e.target.value || null)}
+                  disabled={customRolesQuery.isLoading}
+                  className="h-10 rounded-xl border border-charcoal/15 bg-white px-3 text-sm text-charcoal focus:border-charcoal focus:outline-hidden focus:ring-2 focus:ring-charcoal/10 disabled:bg-charcoal/5"
+                >
+                  <option value="">None — base role permissions only</option>
+                  {customRoleId && !customRoles.some((r) => r.id === customRoleId) && user.custom_role && (
+                    <option value={customRoleId}>{user.custom_role.name} (current)</option>
+                  )}
+                  {customRoles.map((customRole) => (
+                    <option key={customRole.id} value={customRole.id}>
+                      {customRole.name} ({customRole.permissions.length} permissions)
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-charcoal/50">
+                  {customRolesQuery.isLoading
+                    ? "Loading custom roles…"
+                    : customRolesQuery.isError
+                      ? "Custom roles could not be loaded; the current selection is preserved."
+                      : user.custom_role && !customRoleId
+                        ? `Clearing ${user.custom_role.name} removes its extra permissions while keeping the selected base role.`
+                        : "Optional. The selected base role controls identity and scoping; the custom role adds its permissions on top."}
+                </p>
               </div>
             )}
           </div>

@@ -12,7 +12,9 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.auth.dependencies import AdminUser
+from app.modules.auth.dependencies import require_permission
+from app.modules.users.models import User
+from app.modules.users.permissions import TENANT_AI_MANAGE
 from app.modules.tenant_ai.schemas import (
     TenantAIProviderResponse,
     TenantAIProviderUpsert,
@@ -25,12 +27,14 @@ from app.modules.tenant_ai.service import (
 
 router = APIRouter(prefix="/tenant-ai", tags=["tenant-ai"])
 
+TenantAIManager = Annotated[User, Depends(require_permission(TENANT_AI_MANAGE))]
+
 
 @router.put("/provider", response_model=TenantAIProviderResponse)
 def configure_provider(
     payload: TenantAIProviderUpsert,
     db: Annotated[Session, Depends(get_db)],
-    actor: AdminUser,
+    actor: TenantAIManager,
 ) -> dict:
     """Store this organization's AI provider and encrypted key (admin only).
 
@@ -44,7 +48,7 @@ def configure_provider(
 @router.get("/provider", response_model=TenantAIProviderResponse)
 def read_provider(
     db: Annotated[Session, Depends(get_db)],
-    actor: AdminUser,
+    actor: TenantAIManager,
 ) -> dict:
     """Return the active provider with only the masked key tail (admin only)."""
 
@@ -54,7 +58,7 @@ def read_provider(
 @router.delete("/provider", status_code=status.HTTP_204_NO_CONTENT)
 def remove_provider(
     db: Annotated[Session, Depends(get_db)],
-    actor: AdminUser,
+    actor: TenantAIManager,
 ) -> None:
     """Clear this organization's provider; assistant falls back to central settings."""
 

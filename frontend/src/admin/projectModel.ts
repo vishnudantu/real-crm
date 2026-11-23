@@ -1,6 +1,30 @@
 export type AdminProjectStatus = "DRAFT" | "ACTIVE" | "INACTIVE";
 export type AdminFactStatus = "DRAFT" | "APPROVED";
 
+/** Mirrors backend/app/modules/projects/models.py ProjectType. Nullable on legacy projects. */
+export type ProjectType = "APARTMENT" | "VILLA" | "PLOT" | "COMMERCIAL" | "MIXED";
+
+export const PROJECT_TYPES: readonly ProjectType[] = [
+  "APARTMENT",
+  "VILLA",
+  "PLOT",
+  "COMMERCIAL",
+  "MIXED",
+];
+
+export const PROJECT_TYPE_LABELS: Readonly<Record<ProjectType, string>> = {
+  APARTMENT: "Apartment",
+  VILLA: "Villa",
+  PLOT: "Plot",
+  COMMERCIAL: "Commercial",
+  MIXED: "Mixed development",
+};
+
+export function projectTypeLabel(type: string | null | undefined): string {
+  if (!type) return "Unspecified";
+  return PROJECT_TYPE_LABELS[type as ProjectType] ?? type.replaceAll("_", " ");
+}
+
 export type ProjectItem = {
   id: string;
   name: string;
@@ -8,6 +32,7 @@ export type ProjectItem = {
   location: string;
   description: string | null;
   rera_number: string | null;
+  project_type: ProjectType | null;
   status: AdminProjectStatus;
   created_by: string;
   created_at: string;
@@ -83,6 +108,7 @@ export type CreateProjectPayload = {
   location: string;
   description?: string | null;
   rera_number?: string | null;
+  project_type?: ProjectType | null;
   status: AdminProjectStatus;
 };
 
@@ -92,6 +118,7 @@ export type UpdateProjectPayload = {
   location?: string;
   description?: string | null;
   rera_number?: string | null;
+  project_type?: ProjectType | null;
   status?: AdminProjectStatus;
 };
 

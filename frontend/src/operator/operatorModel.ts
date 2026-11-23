@@ -7,7 +7,8 @@ export type OperatorPermission =
   | "deployments.write"
   | "operators.manage"
   | "audit.read"
-  | "tenants.impersonate";
+  | "tenants.impersonate"
+  | "revenue.read";
 
 export interface OperatorUser {
   id: string;

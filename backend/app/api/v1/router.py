@@ -10,15 +10,19 @@ from app.modules.billing.router import router as billing_router
 from app.modules.bookings.router import bookings_router, slots_router
 from app.modules.buyer_docs.router import router as buyer_docs_router
 from app.modules.brokers.router import router as brokers_router
+from app.modules.collections.router import router as collections_router
 from app.modules.connectors.router import router as connectors_router
 from app.modules.connect_dialer.router import router as connect_dialer_router
 from app.modules.construction.router import router as construction_router
 from app.modules.conversations.router import router as conversations_router
 from app.modules.customers.router import opportunities_router, router as customers_router
 from app.modules.dashboard.router import router as dashboard_router
+from app.modules.deal_desk.router import router as deal_desk_router
 from app.modules.documents.router import router as documents_router
+from app.modules.executive.router import router as executive_router
 from app.modules.follow_ups.router import router as follow_ups_router
 from app.modules.handoffs.router import handoffs_router
+from app.modules.handover.router import router as handover_router
 from app.modules.integrations.connections_router import router as integration_connections_router
 from app.modules.integrations.router import router as integrations_router
 from app.modules.inventory.router import router as inventory_router
@@ -39,6 +43,7 @@ from app.modules.tenancy.router import router as tenancy_router
 from app.modules.teamchat.router import alias_router as teamchat_alias_router
 from app.modules.tenant_ai.router import router as tenant_ai_router
 from app.modules.teamchat.router import router as teamchat_router
+from app.modules.users.role_router import router as custom_roles_router
 from app.modules.users.router import router as users_router
 from app.modules.solar.router import router as solar_router
 from app.modules.voice_intel.router import router as voice_intel_router
@@ -47,6 +52,7 @@ api_router = APIRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
 api_router.include_router(auth_router)
 api_router.include_router(approvals_router)
+api_router.include_router(custom_roles_router)
 api_router.include_router(users_router)
 api_router.include_router(projects_router)
 api_router.include_router(leads_router)
@@ -59,6 +65,7 @@ api_router.include_router(slots_router)
 api_router.include_router(bookings_router)
 api_router.include_router(buyer_docs_router)
 api_router.include_router(brokers_router)
+api_router.include_router(collections_router)
 api_router.include_router(follow_ups_router)
 api_router.include_router(handoffs_router)
 api_router.include_router(notifications_router)
@@ -74,6 +81,8 @@ api_router.include_router(inventory_router)
 api_router.include_router(billing_router)
 api_router.include_router(postsales_router)
 api_router.include_router(construction_router)
+api_router.include_router(deal_desk_router)
+api_router.include_router(handover_router)
 api_router.include_router(reconciliation_router)
 api_router.include_router(documents_router)
 api_router.include_router(teamchat_router)
@@ -86,3 +95,4 @@ api_router.include_router(widget_router)
 api_router.include_router(voice_intel_router)
 api_router.include_router(connect_dialer_router)
 api_router.include_router(solar_router)
+api_router.include_router(executive_router)

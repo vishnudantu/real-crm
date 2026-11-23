@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
@@ -383,3 +383,69 @@ class BulkFeatureUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     features: dict[str, bool]
+
+
+# ---------------------------------------------------------------------------
+# Revenue command centre
+# ---------------------------------------------------------------------------
+
+
+class AtRiskSummary(BaseModel):
+    past_due_count: int
+    past_due_mrr_paise: int
+    halted_count: int
+    halted_mrr_paise: int
+
+
+class InvoicedMonthPoint(BaseModel):
+    month: date
+    invoiced_paise: int
+    invoice_count: int
+
+
+class PaymentFailureSummary(BaseModel):
+    count_last_30_days: int
+    halted_tenants: int
+
+
+class ExpansionSignal(BaseModel):
+    tenant_id: UUID
+    tenant_slug: str
+    tenant_name: str
+    meter: str  # leads | whatsapp_sent | users
+    used: int
+    limit: int
+    ratio: float
+    period_source: str
+
+
+class RenewalRow(BaseModel):
+    tenant_id: UUID
+    tenant_slug: str
+    tenant_name: str
+    plan_name: str
+    period_end: date
+    days_until: int
+    price_paise: int
+
+
+class RenewalsSummary(BaseModel):
+    window_days: int
+    count: int
+    mrr_at_stake_paise: int
+    subscriptions: list[RenewalRow]
+
+
+class RevenueSummaryResponse(BaseModel):
+    """Operator-wide recurring revenue, failures, expansion and renewals."""
+
+    generated_at: datetime
+    window_months: int
+    mrr_paise: int
+    arr_paise: int
+    active_subscriptions: int
+    at_risk: AtRiskSummary
+    invoiced: list[InvoicedMonthPoint]
+    failures: PaymentFailureSummary
+    expansion_signals: list[ExpansionSignal]
+    renewals: RenewalsSummary

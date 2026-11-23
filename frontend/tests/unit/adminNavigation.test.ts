@@ -23,16 +23,17 @@ test("keeps core navigation in stable labeled groups when all optional features 
 
   assert.deepEqual(
     groups.map((group) => group.label),
-    ["Overview", "Engage", "Catalog", "Customers", "Property", "Team", "Revenue", "System"],
+    ["Overview", "Engage", "Catalog", "Customers", "Operations", "Property", "Team", "Revenue", "System"],
   );
   assert.deepEqual(pathsByGroup({}), [
     ["/admin"],
     ["/admin/notifications"],
-    ["/admin/projects", "/admin/visits"],
-    ["/admin/customers", "/admin/opportunities"],
-    ["/admin/inventory", "/admin/inventory/units"],
+    ["/admin/projects", "/admin/visits", "/admin/construction", "/admin/handover"],
+    ["/admin/customers", "/admin/opportunities", "/admin/brokers"],
+    ["/admin/approvals", "/admin/service-desk", "/admin/service-desk/knowledge", "/admin/call-intelligence"],
+    ["/admin/inventory", "/admin/inventory/units", "/admin/inventory/sun-facing"],
     ["/admin/teamchat", "/admin/users"],
-    ["/admin/documents"],
+    ["/admin/cockpit", "/admin/documents", "/admin/reconciliation"],
     ["/admin/settings", "/admin/audit-logs", "/admin/account"],
   ]);
 });
@@ -84,13 +85,15 @@ test("returns fresh groups and preserves ordering with every feature enabled", (
   assert.notEqual(first[0].items, second[0].items);
   assert.deepEqual(
     first.map((group) => group.label),
-    ["Overview", "Engage", "Catalog", "Customers", "Property", "Team", "Revenue", "Integrate", "System"],
+    ["Overview", "Engage", "Catalog", "Customers", "Operations", "Property", "Team", "Revenue", "Integrate", "System"],
   );
   const revenue = first.find((group) => group.label === "Revenue");
   assert.deepEqual(revenue?.items.map((item) => item.to), [
+    "/admin/cockpit",
     "/admin/analytics",
     "/admin/sales-bookings",
     "/admin/documents",
+    "/admin/reconciliation",
   ]);
 });
 
@@ -132,4 +135,17 @@ test("maps settings path segments to tabs without accepting unknown paths", () =
   assert.equal(resolveSettingsTab("/admin/settings/assignment"), "lead_assignment");
   assert.equal(resolveSettingsTab("/admin/settings/widget"), "widget");
   assert.equal(resolveSettingsTab("/admin/settings/not-a-tab"), "branding");
+});
+
+test("always exposes the Roles settings child and resolves its tab", () => {
+  for (const features of [{}, allFeatures]) {
+    const settings = buildAdminNav(features)
+      .flatMap((group) => group.items)
+      .find((item) => item.to === "/admin/settings");
+    assert.ok(
+      settings?.children?.some((child) => child.to === "/admin/settings/roles"),
+      "Roles child should be present",
+    );
+  }
+  assert.equal(resolveSettingsTab("/admin/settings/roles"), "roles");
 });

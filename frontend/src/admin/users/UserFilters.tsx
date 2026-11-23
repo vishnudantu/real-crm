@@ -1,5 +1,6 @@
 import { RotateCcw, Search, X } from "lucide-react";
 import type { AdminRoleName } from "../adminModel";
+import { ADMIN_ROLE_OPTIONS, roleLabel } from "../adminModel";
 
 type UserFiltersProps = {
   search: string;
@@ -56,9 +57,11 @@ export function UserFilters({
           className="h-10 rounded-xl border border-charcoal/15 bg-white px-3 text-xs font-medium text-charcoal focus:border-charcoal focus:outline-hidden focus:ring-2 focus:ring-charcoal/10"
         >
           <option value="ALL">All Roles</option>
-          <option value="ADMIN">Administrators</option>
-          <option value="SALES_EXECUTIVE">Sales Executives</option>
-          <option value="BUYER">Buyers</option>
+          {ADMIN_ROLE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {roleLabel(option.value)}
+            </option>
+          ))}
         </select>
 
         {/* Status Selector */}

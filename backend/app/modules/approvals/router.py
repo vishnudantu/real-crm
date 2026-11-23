@@ -17,15 +17,15 @@ from app.modules.approvals.schemas import (
     ApprovalRequestListResponse,
     ApprovalRequestResponse,
 )
-from app.modules.auth.dependencies import AdminUser, require_roles
-from app.modules.users.models import RoleName, User
+from app.modules.auth.dependencies import require_permission
+from app.modules.users.models import User
+from app.modules.users.permissions import APPROVALS_DECIDE, APPROVALS_REQUEST
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
-ApprovalStaffUser = Annotated[
-    User,
-    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
-]
+# Open/list/cancel map to approvals.request; decide maps to approvals.decide.
+ApprovalStaffUser = Annotated[User, Depends(require_permission(APPROVALS_REQUEST))]
+ApprovalDecider = Annotated[User, Depends(require_permission(APPROVALS_DECIDE))]
 
 
 @router.post("/requests", response_model=ApprovalRequestResponse,
@@ -70,7 +70,7 @@ def list_requests_endpoint(
 def decide_request_endpoint(
     request_id: UUID,
     payload: ApprovalDecisionRequest,
-    admin: AdminUser,
+    admin: ApprovalDecider,
     db: Annotated[Session, Depends(get_db)],
 ):
     """Record an APPROVED or REJECTED decision made by a manager."""

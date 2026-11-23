@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Edit3, LoaderCircle, X } from "lucide-react";
-import type { AdminProjectStatus, ProjectItem, UpdateProjectPayload } from "../projectModel";
+import type { AdminProjectStatus, ProjectItem, ProjectType, UpdateProjectPayload } from "../projectModel";
+import { PROJECT_TYPE_LABELS, PROJECT_TYPES } from "../projectModel";
 import { updateProject } from "../api";
+import { errorMessage } from "../../shared/apiRequest";
 
 type EditProjectModalProps = {
   project: ProjectItem | null;
@@ -21,6 +23,7 @@ export function EditProjectModal({
   const [location, setLocation] = useState("");
   const [reraNumber, setReraNumber] = useState("");
   const [description, setDescription] = useState("");
+  const [projectType, setProjectType] = useState<ProjectType | "">("");
   const [status, setStatus] = useState<AdminProjectStatus>("ACTIVE");
 
   const [loading, setLoading] = useState(false);
@@ -33,6 +36,7 @@ export function EditProjectModal({
       setLocation(project.location);
       setReraNumber(project.rera_number || "");
       setDescription(project.description || "");
+      setProjectType(project.project_type ?? "");
       setStatus(project.status);
       setError(null);
     }
@@ -65,14 +69,15 @@ export function EditProjectModal({
         location: trimmedLocation,
         rera_number: reraNumber.trim() || null,
         description: description.trim() || null,
+        project_type: projectType || null,
         status,
       };
 
       const updated = await updateProject(project.id, payload);
       onSuccess(updated);
       onClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to update project details.");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Failed to update project details."));
     } finally {
       setLoading(false);
     }
@@ -208,6 +213,35 @@ export function EditProjectModal({
               onChange={(e) => setDescription(e.target.value)}
               className="rounded-xl border border-charcoal/15 bg-white p-3 text-sm text-charcoal placeholder:text-charcoal/40 focus:border-charcoal focus:outline-hidden focus:ring-2 focus:ring-charcoal/10"
             />
+          </div>
+
+          {/* Project Type */}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="edit-ptype" className="text-xs font-semibold text-charcoal">
+              Project Type (Optional)
+            </label>
+            <select
+              id="edit-ptype"
+              value={projectType}
+              onChange={(e) => setProjectType(e.target.value as ProjectType | "")}
+              className="h-10 rounded-xl border border-charcoal/15 bg-white px-3 text-sm text-charcoal focus:border-charcoal focus:outline-hidden focus:ring-2 focus:ring-charcoal/10"
+            >
+              <option value="">Not specified — legacy inventory rules apply</option>
+              {PROJECT_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {PROJECT_TYPE_LABELS[type]}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-charcoal/50">
+              {projectType === "APARTMENT" || projectType === "COMMERCIAL"
+                ? "Units must include tower and floor. Apartments may not carry a plot number."
+                : projectType === "VILLA" || projectType === "PLOT"
+                  ? "Units must include a plot number; tower and numbered floors are not allowed (ground/basement labels like G or B1 are accepted)."
+                  : projectType === "MIXED"
+                    ? "Units may use either tower/floor or plot numbering; no per-type restrictions apply."
+                    : "Changing the type affects new and edited units only. Existing units are not revalidated until they are next saved."}
+            </p>
           </div>
 
           {/* Status Selection */}

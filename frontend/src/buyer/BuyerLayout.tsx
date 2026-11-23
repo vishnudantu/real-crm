@@ -7,6 +7,8 @@ import {
   MessageSquare,
   Calendar,
   Building2,
+  FolderLock,
+  LifeBuoy,
   User,
   LogOut,
   Bell,
@@ -38,6 +40,8 @@ const NAV_ITEMS: NavItem[] = [
   { label: "My Conversations", to: "/buyer/conversations", icon: MessageSquare },
   { label: "My Site Visits", to: "/buyer/visits", icon: Calendar },
   { label: "Project Information", to: "/buyer/project", icon: Building2 },
+  { label: "My Documents", to: "/buyer/documents", icon: FolderLock },
+  { label: "Help Center", to: "/buyer/help", icon: LifeBuoy },
   { label: "My Profile", to: "/buyer/profile", icon: User },
 ];
 
@@ -510,7 +514,7 @@ export function BuyerLayout() {
           ===================================================================== */}
       <nav
         aria-label="Mobile quick tab bar"
-        className="fixed inset-x-0 bottom-0 z-30 flex h-16 items-center justify-around border-t border-charcoal/10 bg-ivory/95 px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-md lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 flex h-16 items-center justify-start gap-1 overflow-x-auto border-t border-charcoal/10 bg-ivory/95 px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-md sm:justify-around lg:hidden"
       >
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
@@ -522,7 +526,7 @@ export function BuyerLayout() {
             <Link
               key={item.to}
               to={item.to}
-              className={`flex flex-col items-center justify-center gap-1 rounded-lg px-2.5 py-1 text-center transition-colors ${
+              className={`flex shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-2.5 py-1 text-center transition-colors ${
                 isActive
                   ? "text-forest font-semibold"
                   : "text-charcoal/60 hover:text-charcoal"

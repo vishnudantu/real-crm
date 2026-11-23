@@ -6,15 +6,19 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Download,
   FileUp,
+  Info,
   LayoutGrid,
   LoaderCircle,
+  Plus,
   XCircle,
 } from "lucide-react";
 import { errorMessage } from "../shared/apiRequest";
+import { projectTypeLabel } from "../admin/projectModel";
 import { bulkCreateUnits, fetchUnits } from "./inventoryApi";
 import type { BulkUnitCreateResponse, UnitStatus } from "./inventoryModel";
-import { bulkCsvParse, statusLabel, UNIT_STATUSES } from "./inventoryModel";
+import { bulkCsvParse, downloadTextFile, SAMPLE_UNIT_CSV, statusLabel, UNIT_STATUSES, unitAuthoringGuidance } from "./inventoryModel";
 import {
   inventoryCardClasses,
   inventoryInputClasses,
@@ -26,6 +30,7 @@ import {
 } from "./inventoryUi";
 import { useInventoryProjects } from "./useInventoryProjects";
 import { UnitDetailDrawer } from "./UnitDetailDrawer";
+import { CreateUnitDialog } from "./CreateUnitDialog";
 
 const PAGE_SIZES = [10, 20, 50, 100] as const;
 const CSV_PLACEHOLDER = `code,configuration,facing,carpet_area
@@ -47,6 +52,7 @@ export function InventoryUnitsPage() {
   const [preview, setPreview] = useState<BulkUnitCreateResponse | null>(null);
   const [importing, setImporting] = useState<"preview" | "commit" | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [addUnitOpen, setAddUnitOpen] = useState(false);
 
   useEffect(() => {
     if (!projectId && projects[0]) setProjectId(projects[0].id);
@@ -68,6 +74,9 @@ export function InventoryUnitsPage() {
   const selectedProject = projects.find((project) => project.id === projectId);
 
   const parsed = useMemo(() => bulkCsvParse(csvText, projectId), [csvText, projectId]);
+  const selectedProject = projects.find((project) => project.id === projectId) ?? null;
+  const authoring = unitAuthoringGuidance(selectedProject?.project_type);
+  const typedProject = Boolean(selectedProject?.project_type);
   const resultByIndex = useMemo(
     () => new Map((preview?.results ?? []).map((result) => [result.index, result])),
     [preview],
@@ -146,10 +155,21 @@ export function InventoryUnitsPage() {
             with a server-side dry run before anything is committed.
           </p>
         </div>
-        <Link to="/admin/inventory" className={inventorySecondaryButton}>
-          <LayoutGrid aria-hidden="true" className="size-3.5" />
-          Inventory map
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAddUnitOpen(true)}
+            className={inventoryPrimaryButton}
+            title="Add one unit manually"
+          >
+            <Plus aria-hidden="true" className="size-3.5" />
+            Add unit
+          </button>
+          <Link to="/admin/inventory" className={inventorySecondaryButton}>
+            <LayoutGrid aria-hidden="true" className="size-3.5" />
+            Inventory map
+          </Link>
+        </div>
       </div>
 
       {notice && (
@@ -307,20 +327,51 @@ export function InventoryUnitsPage() {
         </div>
       </section>
 
-      <section aria-label="Bulk CSV import" className={`${inventoryCardClasses} p-5`}>
-        <div className="flex items-start gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-charcoal/5 text-charcoal">
-            <FileUp aria-hidden="true" className="size-4" />
+      {typedProject && (
+        <p role="note" className="flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs leading-relaxed text-sky-900">
+          <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-sky-600" />
+          <span>
+            <strong>{projectTypeLabel(selectedProject?.project_type)} project.</strong>{" "}
+            {authoring.summary}
           </span>
-          <div>
+        </p>
+      )}
+
+      <section aria-label="Bulk CSV import" className={`${inventoryCardClasses} p-5`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-charcoal/5 text-charcoal">
+              <FileUp aria-hidden="true" className="size-4" />
+            </span>
+            <div>
             <h2 className="text-base font-semibold tracking-tight text-charcoal">Bulk import units</h2>
             <p className="mt-1 max-w-3xl text-xs leading-relaxed text-charcoal/60">
               Paste CSV with a header row. Required: <code className="rounded bg-charcoal/5 px-1 font-mono">code</code>.
-              Optional: <code className="rounded bg-charcoal/5 px-1 font-mono">configuration, facing, carpet_area, built_up_area, tower, floor, position, status</code>.
+              Optional: <code className="rounded bg-charcoal/5 px-1 font-mono">configuration, facing, carpet_area, built_up_area, tower, floor, plot_number, position, status</code>.
               New units are created as AVAILABLE by default (DRAFT and APPROVED are also accepted).
               Validation runs as a server dry run first; nothing is written until you commit.
             </p>
+            {typedProject && (
+              <p className="mt-2 max-w-3xl rounded-lg border border-amber-200/70 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
+                {authoring.requiresTower || authoring.requiresFloor ? (
+                  <>For this project each row must include <code className="rounded bg-white/70 px-1 font-mono">tower</code> and <code className="rounded bg-white/70 px-1 font-mono">floor</code>{authoring.disallowsPlotNumber ? <>; <code className="rounded bg-white/70 px-1 font-mono">plot_number</code> must stay empty</> : null}. </>
+                ) : authoring.requiresPlotNumber ? (
+                  <>For this project each row must include <code className="rounded bg-white/70 px-1 font-mono">plot_number</code>; <code className="rounded bg-white/70 px-1 font-mono">tower</code> must stay empty and <code className="rounded bg-white/70 px-1 font-mono">floor</code> may only hold a ground/basement block such as G or B1. </>
+                ) : null}
+                Rows that break these rules fail the dry run with a per-row explanation.
+              </p>
+            )}
           </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => downloadTextFile("propflow-units-sample.csv", SAMPLE_UNIT_CSV)}
+            className={inventorySecondaryButton}
+            title="Download a sample CSV with the accepted columns"
+          >
+            <Download aria-hidden="true" className="size-3.5" />
+            Sample CSV
+          </button>
         </div>
 
         <div className="mt-4">
@@ -369,6 +420,7 @@ export function InventoryUnitsPage() {
                   <th scope="col" className="px-3 py-2.5">Code</th>
                   <th scope="col" className="px-3 py-2.5">Configuration</th>
                   <th scope="col" className="px-3 py-2.5">Tower / floor</th>
+                  <th scope="col" className="px-3 py-2.5">Plot</th>
                   <th scope="col" className="px-3 py-2.5">Carpet area</th>
                   <th scope="col" className="px-3 py-2.5">Validation</th>
                 </tr>
@@ -383,6 +435,7 @@ export function InventoryUnitsPage() {
                       <td className="px-3 py-2.5 font-mono font-semibold">{row.internal_code}</td>
                       <td className="px-3 py-2.5 text-charcoal/70">{row.configuration ?? "—"}</td>
                       <td className="px-3 py-2.5 text-charcoal/70">{[row.tower, row.floor].filter(Boolean).join(" / ") || "—"}</td>
+                      <td className="px-3 py-2.5 text-charcoal/70">{row.plot_number ?? "—"}</td>
                       <td className="px-3 py-2.5 text-charcoal/70">{row.carpet_area_sqft ?? "—"}</td>
                       <td className="px-3 py-2.5">
                         {failed ? (
@@ -447,8 +500,22 @@ export function InventoryUnitsPage() {
       {selectedUnitId && (
         <UnitDetailDrawer
           unitId={selectedUnitId}
+          projectType={selectedProject?.project_type}
           onClose={() => setSelectedUnitId(null)}
           onChanged={(message) => setNotice(message)}
+        />
+      )}
+
+      {addUnitOpen && projectId && (
+        <CreateUnitDialog
+          projectId={projectId}
+          projectType={selectedProject?.project_type}
+          onClose={() => setAddUnitOpen(false)}
+          onCreated={async (code) => {
+            setAddUnitOpen(false);
+            await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+            setNotice(`Unit ${code} created as DRAFT.`);
+          }}
         />
       )}
     </div>

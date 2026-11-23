@@ -149,3 +149,17 @@ class CarRequestAlreadyRequestedError(HTTPException):
             ),
         )
 
+
+class BookingContactNotFoundError(HTTPException):
+    """The supplied contact_id does not exist within the caller's tenant.
+
+    404 rather than 403 so a cross-tenant id is indistinguishable from a
+    missing one (no existence leak).
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact not found.",
+        )
+

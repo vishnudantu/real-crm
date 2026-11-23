@@ -1,6 +1,6 @@
 import { getSession } from "./session";
 
-export type RoleName = "BUYER" | "SALES_EXECUTIVE" | "ADMIN";
+export type RoleName = "BUYER" | "SALES_EXECUTIVE" | "ADMIN" | "MANAGER";
 
 export type AuthenticatedUser = {
   id: string;
@@ -54,12 +54,14 @@ export const API_BASE_URL = (
 
 const ROLE_HOME: Record<RoleName, string> = {
   ADMIN: "/admin",
+  MANAGER: "/admin/handover",
   SALES_EXECUTIVE: "/sales",
   BUYER: "/buyer",
 };
 
 export const ROLE_LABEL: Record<RoleName, string> = {
   ADMIN: "Administrator",
+  MANAGER: "Manager",
   SALES_EXECUTIVE: "Sales executive",
   BUYER: "Buyer",
 };
@@ -84,7 +86,7 @@ export class ApiError extends Error {
 }
 
 export function roleFromName(value: string): RoleName | null {
-  if (value === "ADMIN" || value === "SALES_EXECUTIVE" || value === "BUYER") {
+  if (value === "ADMIN" || value === "MANAGER" || value === "SALES_EXECUTIVE" || value === "BUYER") {
     return value;
   }
   return null;

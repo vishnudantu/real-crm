@@ -22,6 +22,7 @@ class OperatorPermission(StrEnum):
     OPERATORS_MANAGE = "operators.manage"
     AUDIT_READ = "audit.read"
     TENANTS_IMPERSONATE = "tenants.impersonate"
+    REVENUE_READ = "revenue.read"
 
 
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {

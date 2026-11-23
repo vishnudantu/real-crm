@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Eye,
   EyeOff,
@@ -6,8 +7,10 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import type { AdminRoleName, CreateUserPayload, UserItem } from "../adminModel";
+import type { AdminRoleName, CreateUserPayload, RoleAssignmentSelection, UserItem } from "../adminModel";
+import { ADMIN_ROLE_OPTIONS, createRoleAssignmentFields } from "../adminModel";
 import { createUser } from "../api";
+import { fetchCustomRoles } from "../roles/roleApi";
 
 type CreateUserModalProps = {
   isOpen: boolean;
@@ -26,10 +29,19 @@ export function CreateUserModal({
   const [showPassword, setShowPassword] = useState(false);
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<AdminRoleName>("SALES_EXECUTIVE");
+  const [customRoleId, setCustomRoleId] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(true);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const customRolesQuery = useQuery({
+    queryKey: ["admin", "roles", "custom"],
+    queryFn: fetchCustomRoles,
+    enabled: isOpen,
+    staleTime: 60_000,
+  });
+  const customRoles = customRolesQuery.data?.items ?? [];
 
   if (!isOpen) return null;
 
@@ -57,20 +69,24 @@ export function CreateUserModal({
 
     setLoading(true);
     try {
+      const assignment: RoleAssignmentSelection = {
+        role,
+        customRoleId,
+      };
       const payload: CreateUserPayload = {
         full_name: trimmedName,
         email: trimmedEmail,
         password,
         phone: phone.trim() || null,
-        role,
+        ...createRoleAssignmentFields(assignment),
         is_active: isActive,
       };
 
       const newUser = await createUser(payload);
       onSuccess(newUser);
       onClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to create user account.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create user account.");
     } finally {
       setLoading(false);
     }
@@ -216,30 +232,14 @@ export function CreateUserModal({
             <label className="text-xs font-semibold text-charcoal">
               Account Role <span className="text-rose-500">*</span>
             </label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                {
-                  id: "SALES_EXECUTIVE" as AdminRoleName,
-                  label: "Sales Exec",
-                  desc: "Handles leads & visits",
-                },
-                {
-                  id: "BUYER" as AdminRoleName,
-                  label: "Buyer",
-                  desc: "Explores & books",
-                },
-                {
-                  id: "ADMIN" as AdminRoleName,
-                  label: "Admin",
-                  desc: "Full management",
-                },
-              ].map((r) => (
+            <div className={`grid gap-2 ${ADMIN_ROLE_OPTIONS.length > 2 ? "grid-cols-3" : "grid-cols-2"}`}>
+              {ADMIN_ROLE_OPTIONS.map((r) => (
                 <button
-                  key={r.id}
+                  key={r.value}
                   type="button"
-                  onClick={() => setRole(r.id)}
+                  onClick={() => setRole(r.value)}
                   className={`flex flex-col items-start rounded-xl border p-2.5 text-left transition-all ${
-                    role === r.id
+                    role === r.value
                       ? "border-charcoal bg-charcoal/5 ring-1 ring-charcoal"
                       : "border-charcoal/15 bg-white hover:border-charcoal/30"
                   }`}
@@ -247,10 +247,43 @@ export function CreateUserModal({
                   <span className="text-xs font-bold text-charcoal">
                     {r.label}
                   </span>
-                  <span className="text-[10px] text-charcoal/60">{r.desc}</span>
+                  <span className="text-[10px] text-charcoal/60">{r.description}</span>
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Custom Role (optional) */}
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="create-custom-role"
+              className="text-xs font-semibold text-charcoal"
+            >
+              Custom Role (Optional)
+            </label>
+            <select
+              id="create-custom-role"
+              value={customRoleId ?? ""}
+              onChange={(e) => setCustomRoleId(e.target.value || null)}
+              className="h-10 rounded-xl border border-charcoal/15 bg-white px-3 text-sm text-charcoal focus:border-charcoal focus:outline-hidden focus:ring-2 focus:ring-charcoal/10 disabled:bg-charcoal/5"
+              disabled={customRolesQuery.isLoading || customRoles.length === 0}
+            >
+              <option value="">None — base role permissions only</option>
+              {customRoles.map((customRole) => (
+                <option key={customRole.id} value={customRole.id}>
+                  {customRole.name} ({customRole.permissions.length} permissions)
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-charcoal/50">
+              {customRolesQuery.isLoading
+                ? "Loading custom roles…"
+                : customRolesQuery.isError
+                  ? "Custom roles could not be loaded; only built-in roles are available."
+                  : customRoles.length === 0
+                    ? "No custom roles defined yet. Admins can create them under Settings → Roles."
+                    : "Optional. The selected base role controls identity and scoping; the custom role adds its permissions on top."}
+            </p>
           </div>
 
           {/* Active Status Checkbox */}

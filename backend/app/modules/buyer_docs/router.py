@@ -1,8 +1,9 @@
-"""Staff BuyerVault endpoints.
+"""BuyerVault staff and buyer-portal endpoints.
 
-Every route is restricted to ADMIN and SALES_EXECUTIVE. Buyers receive 403.
-Buyer self-upload and portal access are deliberately deferred to a later portal
-feature; raw-body upload avoids a python-multipart dependency.
+Staff routes keep the existing ADMIN/SALES_EXECUTIVE guard; the parallel
+``/buyer-docs/mine/*`` surface admits BUYER accounts (and staff) and always
+scopes to the server-resolved Contact for the authenticated user. Uploads use
+raw bodies so python-multipart stays out of the dependency set.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -31,12 +32,25 @@ from app.modules.buyer_docs.schemas import (
     DocumentRequestListResponse,
     DocumentRequestResponse,
 )
+from app.modules.customers.models import Contact
 from app.modules.users.models import RoleName, User
 
 router = APIRouter(prefix="/buyer-docs", tags=["buyer-docs"])
 StaffUser = Annotated[
     User, Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE))
 ]
+BuyerPortalUser = Annotated[
+    User,
+    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE, RoleName.BUYER)),
+]
+
+
+def _buyer_contact(actor: User, db: Session) -> Contact:
+    """Resolve the buyer's own contact or 404 — never trust client contact ids."""
+    contact = service.resolve_buyer_contact(db, actor)
+    if contact is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyer contact not found.")
+    return contact
 
 
 @router.post(
@@ -167,3 +181,89 @@ def cancel_request_endpoint(
 ) -> DocumentRequestResponse:
     request = service.cancel_request(db, actor=staff, request_id=request_id)
     return DocumentRequestResponse.model_validate(request)
+
+
+# --------------------------------------------------------------------------- #
+# Buyer portal surface: /buyer-docs/mine/*
+#
+# Every route resolves the contact from the authenticated user (never from the
+# request) and answers 404 — not 403 — when no buyer contact resolves or when
+# the artifact belongs to someone else, so existence is never disclosed.
+# --------------------------------------------------------------------------- #
+
+
+@router.post(
+    "/mine/documents",
+    response_model=BuyerDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Buyer self-upload; owns the document and fulfills OPEN requests",
+)
+async def upload_buyer_document_endpoint(
+    buyer: BuyerPortalUser,
+    db: Annotated[Session, Depends(get_db)],
+    request: Request,
+    category: BuyerDocumentCategory,
+    title: Annotated[str, Query(min_length=1, max_length=255)],
+    expiry_date: date | None = None,
+) -> BuyerDocumentResponse:
+    contact = _buyer_contact(buyer, db)
+    contents = await request.body()
+    document = service.upload_buyer_document(
+        db,
+        actor=buyer,
+        contact=contact,
+        category=category,
+        title=title,
+        contents=contents,
+        content_type=request.headers.get("content-type", "application/octet-stream"),
+        expiry_date=expiry_date,
+    )
+    return BuyerDocumentResponse.model_validate(document)
+
+
+@router.get("/mine/documents", response_model=BuyerDocumentListResponse)
+def list_buyer_documents_endpoint(
+    buyer: BuyerPortalUser,
+    db: Annotated[Session, Depends(get_db)],
+    category: BuyerDocumentCategory | None = None,
+    document_status: Annotated[BuyerDocumentStatus | None, Query(alias="status")] = None,
+) -> BuyerDocumentListResponse:
+    contact = _buyer_contact(buyer, db)
+    rows = service.list_buyer_documents(
+        db,
+        contact=contact,
+        category=category,
+        status=document_status,
+    )
+    return BuyerDocumentListResponse(items=rows, total=len(rows))
+
+
+@router.get("/mine/documents/{document_id}/download")
+def download_buyer_document_endpoint(
+    document_id: UUID,
+    buyer: BuyerPortalUser,
+    db: Annotated[Session, Depends(get_db)],
+):
+    contact = _buyer_contact(buyer, db)
+    document, path = service.get_buyer_document_for_download(
+        db, contact=contact, document_id=document_id
+    )
+    return FileResponse(
+        path,
+        media_type=document.content_type,
+        headers={
+            "X-Content-Sha256": document.content_sha256,
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/mine/requests", response_model=DocumentRequestListResponse)
+def list_buyer_requests_endpoint(
+    buyer: BuyerPortalUser,
+    db: Annotated[Session, Depends(get_db)],
+    category: BuyerDocumentCategory | None = None,
+) -> DocumentRequestListResponse:
+    contact = _buyer_contact(buyer, db)
+    rows = service.list_buyer_open_requests(db, contact=contact, category=category)
+    return DocumentRequestListResponse(items=rows, total=len(rows))

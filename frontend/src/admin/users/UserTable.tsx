@@ -1,5 +1,5 @@
-import { CheckCircle, Edit3, Power } from "lucide-react";
-import type { AdminRoleName, UserItem } from "../adminModel";
+import { CheckCircle, Edit3, Power, ShieldCheck } from "lucide-react";
+import type { UserItem } from "../adminModel";
 
 type UserTableProps = {
   users: UserItem[];
@@ -8,13 +8,20 @@ type UserTableProps = {
   onToggleStatus: (user: UserItem) => void;
 };
 
-export function RoleBadge({ roleName }: { roleName: AdminRoleName }) {
+export function RoleBadge({ roleName }: { roleName: string }) {
   switch (roleName) {
     case "ADMIN":
       return (
         <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-charcoal px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-amber-200 shadow-xs">
           <span className="size-1.5 rounded-full bg-amber-400" />
           Administrator
+        </span>
+      );
+    case "MANAGER":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-violet-200/60 bg-violet-50 px-2.5 py-0.5 text-[11px] font-semibold text-violet-800">
+          <span className="size-1.5 rounded-full bg-violet-500" />
+          Manager
         </span>
       );
     case "SALES_EXECUTIVE":
@@ -38,6 +45,19 @@ export function RoleBadge({ roleName }: { roleName: AdminRoleName }) {
         </span>
       );
   }
+}
+
+/** Compact custom-role chip shown next to the built-in base role. */
+export function CustomRoleBadge({ name }: { name: string }) {
+  return (
+    <span
+      className="mt-1 inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-semibold text-violet-800"
+      title={`Custom role: ${name}`}
+    >
+      <ShieldCheck className="size-3 text-violet-500" />
+      {name}
+    </span>
+  );
 }
 
 export function StatusBadge({ isActive }: { isActive: boolean }) {
@@ -158,6 +178,7 @@ export function UserTable({
                   {/* Role Column */}
                   <td className="whitespace-nowrap px-6 py-4">
                     <RoleBadge roleName={u.role.name} />
+                    {u.custom_role && <CustomRoleBadge name={u.custom_role.name} />}
                   </td>
 
                   {/* Status Column */}

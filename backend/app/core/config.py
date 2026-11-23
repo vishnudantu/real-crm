@@ -141,6 +141,10 @@ class Settings(BaseSettings):
     )
     messaging_dispatch_poll_interval_seconds: int = Field(default=30, ge=1, le=3600)
     messaging_dispatch_batch_size: int = Field(default=50, ge=1, le=500)
+    collections_reminder_enabled: bool = Field(
+        default=True,
+        description="Whether the daily collections reminder scheduler task runs.",
+    )
     gupshup_api_key: SecretStr | None = Field(default=None)
     gupshup_app_name: str | None = Field(default=None)
     gupshup_source_number: str | None = Field(default=None)

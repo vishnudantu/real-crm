@@ -23,6 +23,10 @@ from app.modules.auth.service import (
 from app.modules.users import repository
 from app.modules.users.exceptions import InsufficientPermissionsError
 from app.modules.users.models import RoleName, User
+from app.modules.users.permissions import (
+    PERMISSION_REGISTRY,
+    PROTECTED_PERMISSIONS,
+)
 from app.modules.tenancy.models import Tenant, TenantStatus
 
 bearer_scheme = HTTPBearer(
@@ -62,6 +66,14 @@ def get_current_user(
     user = repository.get_user_by_id(db, claims.subject)  # tenant is validated from the token below
     if user is None or user.tenant_id != claims.tenant_id:
         raise InvalidTokenError()
+    if (
+        user.custom_role_id is not None
+        and (
+            user.custom_role is None
+            or user.custom_role.tenant_id != user.tenant_id
+        )
+    ):
+        raise InvalidTokenError()
     if not user.is_active:
         raise InactiveUserError()
     tenant = db.get(Tenant, claims.tenant_id)
@@ -83,6 +95,10 @@ def require_roles(*roles: RoleName) -> Callable[..., User]:
     def _require_role(
         current_user: User = Depends(get_current_user),
     ) -> User:
+        if current_user.custom_role_id is not None:
+            # Custom roles never automatically pass legacy gates. Only routes
+            # migrated to require_permission evaluate their permission set.
+            raise InsufficientPermissionsError()
         if current_user.role.name not in allowed:
             raise InsufficientPermissionsError()
         return current_user
@@ -91,6 +107,58 @@ def require_roles(*roles: RoleName) -> Callable[..., User]:
         "require_" + "_or_".join(sorted(role.value.lower() for role in roles))
     )
     return _require_role
+
+
+def require_permission(permission: str) -> Callable[..., User]:
+    """Allow a built-in role through its legacy gate or an explicit custom grant.
+
+    The registry is the only source of legacy compatibility mappings. Protected
+    system permissions can never be checked through this custom-role path.
+    """
+
+    if permission in PROTECTED_PERMISSIONS or permission not in PERMISSION_REGISTRY:
+        raise ValueError(f"Unknown grantable permission: {permission}")
+    definition = PERMISSION_REGISTRY[permission]
+
+    def _require_permission(
+        current_user: User = Depends(get_current_user),
+    ) -> User:
+        if current_user.custom_role_id is not None:
+            if current_user.custom_role is None:
+                raise InsufficientPermissionsError()
+            granted = current_user.permission_keys
+            if (
+                permission not in granted
+                or not definition.grantable
+                or not granted <= PERMISSION_REGISTRY.keys()
+            ):
+                raise InsufficientPermissionsError()
+            return current_user
+
+        if current_user.role.name not in definition.legacy_roles:
+            raise InsufficientPermissionsError()
+        return current_user
+
+    _require_permission.__name__ = "require_" + permission.replace(".", "_")
+    return _require_permission
+
+
+def has_permission(user: User, permission: str) -> bool:
+    """Non-raising permission check mirroring :func:`require_permission`.
+
+    Service-layer capability checks call this so a custom role's explicit
+    grants work the same as the router-level gate, while built-in roles keep
+    their registry legacy mapping. Row-level scoping must never use this —
+    it stays keyed on the built-in base role identity.
+    """
+
+    definition = PERMISSION_REGISTRY.get(permission)
+    if definition is None or not definition.grantable:
+        return False
+    if user.custom_role_id is not None:
+        granted = user.permission_keys
+        return permission in granted and granted <= PERMISSION_REGISTRY.keys()
+    return user.role.name in definition.legacy_roles
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]

@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.modules.inventory import repository
+from app.modules.inventory.authoring import validate_unit_for_project_type
 from app.modules.inventory.exceptions import (
     BulkCreateRowError,
     DuplicateActiveHoldError,
@@ -135,12 +136,13 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def _resolve_inventory_manager(session: Session, actor) -> bool:
-    """Check manager access for ORM users and detached test principals.
+    """Resolve legacy manager rights or an explicit inventory.write grant."""
 
-    Managers receive inventory rights, not blanket administrator privileges.
-    This check is used only to let them manage another user's hold.
-    """
-
+    custom_role = getattr(actor, "custom_role", None)
+    if getattr(actor, "custom_role_id", None) is not None:
+        if custom_role is not None:
+            return "inventory.write" in (custom_role.permissions or [])
+        return False
     allowed = {RoleName.ADMIN.value, RoleName.MANAGER.value}
     role = getattr(actor, "role", None)
     if role is not None:
@@ -229,6 +231,14 @@ def _append_transition(
     return event
 
 
+def _validate_project_type(project_type: str | None, unit_fields: dict) -> None:
+    """Reject writes that conflict with the project's inventory taxonomy."""
+
+    errors = validate_unit_for_project_type(project_type, unit_fields)
+    if errors:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, " ".join(errors))
+
+
 def create_unit(
     session: Session, *, actor, payload: UnitCreateRequest, commit: bool = True
 ) -> PropertyUnit:
@@ -253,6 +263,15 @@ def create_unit(
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, "Areas must be positive square feet."
             )
+    _validate_project_type(
+        project.project_type,
+        {
+            "tower": payload.tower,
+            "floor": payload.floor,
+            "plot_number": payload.plot_number,
+            "internal_code": payload.internal_code,
+        },
+    )
 
     unit = PropertyUnit(
         tenant_id=actor.tenant_id,
@@ -367,6 +386,22 @@ def update_unit(
     ``transition_unit`` so the state machine and its event log stay authoritative.
     """
     unit = _get_unit_or_404(session, unit_id, tenant_id=actor.tenant_id)
+    project = session.scalar(
+        select(Project).where(Project.id == unit.project_id, Project.tenant_id == actor.tenant_id)
+    )
+    if project is None:
+        raise ProjectNotFoundError()
+    _validate_project_type(
+        project.project_type,
+        {
+            "tower": payload.tower if "tower" in payload.model_fields_set else unit.tower,
+            "floor": payload.floor if "floor" in payload.model_fields_set else unit.floor,
+            "plot_number": (
+                payload.plot_number if "plot_number" in payload.model_fields_set else unit.plot_number
+            ),
+            "internal_code": unit.internal_code,
+        },
+    )
     for field in (
         "configuration",
         "floor",
@@ -767,3 +802,47 @@ def availability_summary(session: Session, *, tenant_id: UUID, project_id: UUID)
     counts = {status_value.value: 0 for status_value in UnitStatus}
     counts.update(repository.availability_counts(session, project_id, tenant_id=tenant_id))
     return {"project_id": project_id, "counts": counts, "total": sum(counts.values())}
+
+
+def release_unit_for_cancellation(
+    session: Session,
+    *,
+    tenant_id: UUID,
+    unit_id: UUID,
+    actor_id: UUID,
+    reason: str,
+) -> dict:
+    """Release a booking-cancelled unit: BOOKED -> AVAILABLE (CANCELLATION edge).
+
+    Runs in the caller's transaction without committing, so the postsales
+    cancellation, the unit status, and its append-only event stay atomic.
+    A unit in any other status is reported unreleased and never overridden —
+    only the state machine's single CANCELLATION edge (BOOKED -> AVAILABLE)
+    is applied here.
+    """
+
+    unit = repository.get_unit(session, unit_id, tenant_id=tenant_id)
+    if unit is None:
+        return {"unit_id": str(unit_id), "released": False, "reason": "unit-not-found"}
+    from_status = unit.status
+    if from_status != UnitStatus.BOOKED.value:
+        return {
+            "unit_id": str(unit.id),
+            "released": False,
+            "from_status": from_status,
+            "reason": f"only BOOKED units are released by cancellation (unit is {from_status})",
+        }
+    _append_transition(
+        session,
+        unit=unit,
+        to_status=UnitStatus.AVAILABLE,
+        reason=reason,
+        source=UnitEventSource.CANCELLATION,
+        actor_id=actor_id,
+    )
+    return {
+        "unit_id": str(unit.id),
+        "released": True,
+        "from_status": from_status,
+        "to_status": UnitStatus.AVAILABLE.value,
+    }

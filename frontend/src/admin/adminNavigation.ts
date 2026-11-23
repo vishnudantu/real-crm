@@ -23,7 +23,9 @@ interface NavigationGroupDefinition {
 
 const SETTINGS_CHILDREN: readonly NavigationDefinition[] = [
   { label: "Branding", shortLabel: "Branding", to: "/admin/settings/branding" },
+  { label: "Roles", shortLabel: "Roles", to: "/admin/settings/roles" },
   { label: "AI Assistant", shortLabel: "AI", to: "/admin/settings/ai" },
+  { label: "AI Providers", shortLabel: "AI Providers", to: "/admin/settings/ai-providers" },
   { label: "Languages", shortLabel: "Languages", to: "/admin/settings/languages" },
   { label: "Reminders", shortLabel: "Reminders", to: "/admin/settings/reminders" },
   { label: "Lead Assignment", shortLabel: "Assignment", to: "/admin/settings/assignment" },
@@ -48,6 +50,8 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
     items: [
       { label: "Projects & Fact Sheets", shortLabel: "Projects", to: "/admin/projects" },
       { label: "Site Visits & Slots", shortLabel: "Visits", to: "/admin/visits" },
+      { label: "Construction Progress", shortLabel: "Construction", to: "/admin/construction" },
+      { label: "Handover & Possession", shortLabel: "Handover", to: "/admin/handover" },
     ],
   },
   {
@@ -55,6 +59,16 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
     items: [
       { label: "Customer Directory", shortLabel: "Directory", to: "/admin/customers" },
       { label: "Opportunity Pipeline", shortLabel: "Opportunities", to: "/admin/opportunities" },
+      { label: "Channel Partners", shortLabel: "Partners", to: "/admin/brokers" },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { label: "Approvals", shortLabel: "Approvals", to: "/admin/approvals" },
+      { label: "Service Desk", shortLabel: "Service Desk", to: "/admin/service-desk" },
+      { label: "Knowledge Base", shortLabel: "Knowledge", to: "/admin/service-desk/knowledge" },
+      { label: "Call Intelligence", shortLabel: "Call Intel", to: "/admin/call-intelligence" },
     ],
   },
   {
@@ -62,6 +76,7 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
     items: [
       { label: "Inventory Map", shortLabel: "Map", to: "/admin/inventory", exact: true },
       { label: "Units & Import", shortLabel: "Units", to: "/admin/inventory/units" },
+      { label: "Sun & Facing", shortLabel: "Sun & Facing", to: "/admin/inventory/sun-facing" },
     ],
   },
   {
@@ -74,9 +89,11 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
   {
     label: "Revenue",
     items: [
+      { label: "Executive Cockpit", shortLabel: "Cockpit", to: "/admin/cockpit" },
       { label: "Analytics & Reports", shortLabel: "Analytics", to: "/admin/analytics", feature: "analytics" },
       { label: "Sales Bookings", shortLabel: "Bookings", to: "/admin/sales-bookings", feature: "post_sales" },
       { label: "Documents", shortLabel: "Documents", to: "/admin/documents" },
+      { label: "Bank Reconciliation", shortLabel: "Reconciliation", to: "/admin/reconciliation" },
     ],
   },
   {
@@ -98,6 +115,7 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
 
 const SETTINGS_TAB_BY_SEGMENT: Readonly<Record<string, string>> = {
   branding: "branding",
+  roles: "roles",
   ai: "ai_assistant",
   languages: "languages",
   reminders: "reminders",
@@ -128,10 +146,16 @@ function visibleItem(
 
 export function buildAdminNav(
   features: Readonly<Record<string, boolean>>,
+  role = "ADMIN",
+  staffOnly = false,
 ): AdminNavigationGroup[] {
+  if (staffOnly) {
+    return [{ label: "Property", items: [{ label: "Handover & Possession", shortLabel: "Handover", to: "/admin/handover" }] }];
+  }
   return NAVIGATION_DEFINITIONS.map((group) => ({
     label: group.label,
     items: group.items
+      .filter((item) => item.to !== "/admin/handover" || role === "ADMIN" || role === "MANAGER")
       .map((item) => visibleItem(item, features))
       .filter((item): item is AdminNavigationItem => item !== null),
   })).filter((group) => group.items.length > 0);
@@ -139,8 +163,11 @@ export function buildAdminNav(
 
 export function buildAdminMobileNav(
   features: Readonly<Record<string, boolean>>,
+  role = "ADMIN",
+  staffOnly = false,
 ): AdminNavigationItem[] {
-  const items = buildAdminNav(features).flatMap((group) => group.items);
+  const items = buildAdminNav(features, role, staffOnly).flatMap((group) => group.items);
+  if (staffOnly) return items;
   const inbox = items.find((item) => item.to === "/admin/inbox");
   const destinations = inbox
     ? ["/admin", "/admin/inbox", "/admin/projects", "/admin/visits", "/admin/account"]

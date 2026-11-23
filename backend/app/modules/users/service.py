@@ -63,7 +63,7 @@ def seed_roles(session: Session) -> list[RoleName]:
 
 
 def _is_admin(user: User) -> bool:
-    return user.role.name == RoleName.ADMIN.value
+    return user.custom_role_id is None and user.role.name == RoleName.ADMIN.value
 
 
 def _require_admin(user: User) -> None:
@@ -159,7 +159,7 @@ def create_user_by_admin(
 
     ensure_within_plan_limits(session, tenant_id=actor.tenant_id, kind="users")
 
-    return create_user_with_role(
+    user = create_user_with_role(
         session,
         full_name=payload.full_name,
         email=str(payload.email),
@@ -169,6 +169,27 @@ def create_user_by_admin(
         is_active=payload.is_active,
         tenant_id=actor.tenant_id,
     )
+    if payload.custom_role_id is not None:
+        from app.modules.users import role_repository
+
+        custom_role = role_repository.get_custom_role(
+            session, payload.custom_role_id, tenant_id=actor.tenant_id
+        )
+        if custom_role is None:
+            session.delete(user)
+            session.commit()
+            raise RoleNotFoundError()
+        user.custom_role_id = custom_role.id
+        # A custom role adds grants without replacing the built-in base role.
+        # The base identity stays in charge of row-level service scoping. When
+        # no role was requested explicitly the default BUYER intake identity
+        # is wrong for custom staff, so they keep the historical SALES_
+        # EXECUTIVE base instead of silently becoming a buyer.
+        if "role" not in payload.model_fields_set:
+            user.role = repository.get_role_by_name(session, RoleName.SALES_EXECUTIVE)
+        session.commit()
+        session.refresh(user)
+    return user
 
 
 def update_user(
@@ -183,17 +204,33 @@ def update_user(
     user = get_accessible_user(session, actor=actor, user_id=user_id)
     fields = payload.model_dump(exclude_unset=True)
 
-    if "role" in fields:
+    if "role" in fields or "custom_role_id" in fields:
         if actor.id == user.id:
             raise CannotChangeOwnRoleError()
         if not _is_admin(actor):
             raise InsufficientPermissionsError()
 
-        requested_role = fields.pop("role")
-        role = repository.get_role_by_name(session, requested_role)
-        if role is None:
-            raise RoleNotFoundError()
-        user.role = role
+        if "custom_role_id" in fields:
+            from app.modules.users import role_repository
+
+            custom_role = role_repository.get_custom_role(
+                session,
+                fields.pop("custom_role_id"),
+                tenant_id=actor.tenant_id,
+            )
+            if custom_role is None:
+                raise RoleNotFoundError()
+            # The custom role adds grants; the built-in base role (and its
+            # row-level service scoping) is deliberately left untouched.
+            user.custom_role_id = custom_role.id
+        else:
+            requested_role = fields.pop("role")
+            role = repository.get_role_by_name(session, requested_role)
+            if role is None:
+                raise RoleNotFoundError()
+            user.role = role
+            user.custom_role_id = None
+        user.security_version += 1
 
     if "full_name" in fields:
         user.full_name = fields["full_name"]

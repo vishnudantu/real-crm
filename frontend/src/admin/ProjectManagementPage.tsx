@@ -112,8 +112,8 @@ export function ProjectManagementPage() {
           nextStatus === "ACTIVE" ? "active" : "inactive"
         }.`,
       );
-    } catch (err: any) {
-      alert(err?.message || "Failed to update project status.");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to update project status.");
     }
   };
 
@@ -194,7 +194,7 @@ export function ProjectManagementPage() {
             Failed to Load Projects
           </h3>
           <p className="mt-1 text-xs text-charcoal/60">
-            {(error as any)?.message || "A network or server error occurred."}
+            {error instanceof Error ? error.message : "A network or server error occurred."}
           </p>
           <button
             type="button"

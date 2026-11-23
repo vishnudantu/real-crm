@@ -107,11 +107,10 @@ def upgrade() -> None:
             "ix_tower_orientations_tenant_project",
             "tower_orientations", ["tenant_id", "project_id"], unique=False,
         )
-        # Composite tenant_id_id index (auto-emitted by tenancy listener for ORM).
-        op.create_index(
-            "ix_tower_orientations_tenant_id_id",
-            "tower_orientations", ["tenant_id", "id"], unique=False,
-        )
+        # NOTE: ix_tower_orientations_tenant_id_id is intentionally NOT created
+        # here — the after_parent_attach listener in app.db.tenancy auto-emits
+        # that composite index when the table is built from ORM metadata, so
+        # creating it explicitly raises "index already exists".
 
 
 def downgrade() -> None:

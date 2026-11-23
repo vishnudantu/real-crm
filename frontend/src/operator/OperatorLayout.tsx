@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CreditCard,
   Gauge,
+  IndianRupee,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -75,6 +76,12 @@ const NAV_GROUPS: OperatorNavGroup[] = [
   {
     title: "Revenue",
     items: [
+      {
+        label: "Revenue Command",
+        to: "/operator/revenue",
+        icon: IndianRupee,
+        permission: "revenue.read",
+      },
       {
         label: "Plans & Entitlements",
         to: "/operator/plans",

@@ -37,6 +37,7 @@ import { Customer360Page } from "./customers/Customer360Page";
 import { CustomerDuplicatesPage } from "./customers/CustomerDuplicatesPage";
 import { OpportunityPipelinePage } from "./customers/OpportunityPipelinePage";
 import { InventoryMapPage } from "./inventory/InventoryMapPage";
+import { SunFacingPage } from "./solar/SunFacingPage";
 import { InventoryUnitsPage } from "./inventory/InventoryUnitsPage";
 import { DocumentsPage } from "./documents/DocumentsPage";
 import { TeamChatPage } from "./teamchat/TeamChatPage";
@@ -76,6 +77,59 @@ const FeatureNotEnabledPage = lazy(() =>
     default: module.FeatureNotEnabledPage,
   })),
 );
+const ApprovalsPage = lazy(() =>
+  import("./approvals/ApprovalsPage").then((module) => ({
+    default: module.ApprovalsPage,
+  })),
+);
+const ServiceDeskPage = lazy(() =>
+  import("./servicedesk/ServiceDeskPage").then((module) => ({
+    default: module.ServiceDeskPage,
+  })),
+);
+const KnowledgeBasePage = lazy(() =>
+  import("./servicedesk/KnowledgeBasePage").then((module) => ({
+    default: module.KnowledgeBasePage,
+  })),
+);
+const HelpCenterPage = lazy(() =>
+  import("./buyer/help/HelpCenterPage").then((module) => ({
+    default: module.HelpCenterPage,
+  })),
+);
+const ReconciliationPage = lazy(() =>
+  import("./reconciliation/ReconciliationPage").then((module) => ({
+    default: module.ReconciliationPage,
+  })),
+);
+const HandoverPage = lazy(() =>
+  import("./handover/HandoverPage").then((module) => ({ default: module.HandoverPage })),
+);
+const ConstructionPage = lazy(() =>
+  import("./construction/ConstructionPage").then((module) => ({
+    default: module.ConstructionPage,
+  })),
+);
+const CockpitPage = lazy(() =>
+  import("./admin/executive/CockpitPage").then((module) => ({
+    default: module.CockpitPage,
+  })),
+);
+const BrokersPage = lazy(() =>
+  import("./brokers/BrokersPage").then((module) => ({
+    default: module.BrokersPage,
+  })),
+);
+const VoiceIntelPage = lazy(() =>
+  import("./voiceintel/VoiceIntelPage").then((module) => ({
+    default: module.VoiceIntelPage,
+  })),
+);
+const TenantAIPage = lazy(() =>
+  import("./tenantai/TenantAIPage").then((module) => ({
+    default: module.TenantAIPage,
+  })),
+);
 import { BuyerAuthGuard } from "./buyer/BuyerAuthGuard";
 import { BuyerLayout } from "./buyer/BuyerLayout";
 import { BuyerDashboardPage } from "./buyer/BuyerDashboardPage";
@@ -83,6 +137,7 @@ import { ConversationsPage } from "./buyer/ConversationsPage";
 import { SiteVisitsPage } from "./buyer/SiteVisitsPage";
 import { ProjectInfoPage } from "./buyer/ProjectInfoPage";
 import { ProfilePage } from "./buyer/ProfilePage";
+import { BuyerDocumentsPage } from "./buyer/documents/BuyerDocumentsPage";
 import { SalesAuthGuard } from "./sales/SalesAuthGuard";
 import { SalesLayout } from "./sales/SalesLayout";
 import { SalesDashboardPage } from "./sales/SalesDashboardPage";
@@ -137,6 +192,11 @@ const OperatorTenantDetailPage = lazy(() =>
 const OperatorPlansPage = lazy(() =>
   import("./operator/OperatorPlansPage").then((module) => ({
     default: module.OperatorPlansPage,
+  })),
+);
+const RevenuePage = lazy(() =>
+  import("./operator/RevenuePage").then((module) => ({
+    default: module.RevenuePage,
   })),
 );
 const OperatorUsersPage = lazy(() =>
@@ -306,6 +366,14 @@ export default function App() {
                 }
               />
               <Route
+                path="revenue"
+                element={
+                  <OperatorRouteGuard permission="revenue.read">
+                    <RevenuePage />
+                  </OperatorRouteGuard>
+                }
+              />
+              <Route
                 path="operators"
                 element={
                   <OperatorRouteGuard permission="operators.manage">
@@ -325,6 +393,11 @@ export default function App() {
               <Route path="*" element={<Navigate to="/operator" replace />} />
             </Route>
           </Route>
+          <Route path="/admin/handover" element={<AdminAuthGuard staffOnly />}>
+            <Route element={<AdminLayout />}>
+              <Route index element={<Suspense fallback={<RouteLoadingFallback />}><HandoverPage /></Suspense>} />
+            </Route>
+          </Route>
           <Route path="/admin" element={<AdminAuthGuard />}>
             <Route element={<AdminLayout />}>
               <Route index element={<AdminOverviewPage />} />
@@ -338,8 +411,17 @@ export default function App() {
               <Route path="opportunities" element={<OpportunityPipelinePage />} />
               <Route path="inventory" element={<InventoryMapPage />} />
               <Route path="inventory/units" element={<InventoryUnitsPage />} />
+              <Route path="inventory/sun-facing" element={<SunFacingPage />} />
               <Route path="visits" element={<VisitManagementPage />} />
               <Route path="analytics" element={<AnalyticsDashboardPage />} />
+              <Route
+                path="cockpit"
+                element={
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <CockpitPage />
+                  </Suspense>
+                }
+              />
               <Route
                 path="inbox"
                 element={
@@ -397,6 +479,38 @@ export default function App() {
                 }
               />
               <Route path="documents" element={<DocumentsPage />} />
+              <Route
+                path="approvals"
+                element={<Suspense fallback={<RouteLoadingFallback />}><ApprovalsPage /></Suspense>}
+              />
+              <Route
+                path="service-desk"
+                element={<Suspense fallback={<RouteLoadingFallback />}><ServiceDeskPage /></Suspense>}
+              />
+              <Route
+                path="service-desk/knowledge"
+                element={<Suspense fallback={<RouteLoadingFallback />}><KnowledgeBasePage /></Suspense>}
+              />
+              <Route
+                path="reconciliation"
+                element={<Suspense fallback={<RouteLoadingFallback />}><ReconciliationPage /></Suspense>}
+              />
+              <Route
+                path="construction"
+                element={<Suspense fallback={<RouteLoadingFallback />}><ConstructionPage /></Suspense>}
+              />
+              <Route
+                path="brokers"
+                element={<Suspense fallback={<RouteLoadingFallback />}><BrokersPage /></Suspense>}
+              />
+              <Route
+                path="call-intelligence"
+                element={<Suspense fallback={<RouteLoadingFallback />}><VoiceIntelPage /></Suspense>}
+              />
+              <Route
+                path="settings/ai-providers"
+                element={<Suspense fallback={<RouteLoadingFallback />}><TenantAIPage /></Suspense>}
+              />
               <Route path="settings" element={<SystemSettingsPage />} />
               <Route path="settings/:section" element={<SystemSettingsPage />} />
               <Route path="notifications" element={<SystemSettingsPage initialTab="notifications" />} />
@@ -435,6 +549,8 @@ export default function App() {
               <Route path="conversations" element={<ConversationsPage />} />
               <Route path="visits" element={<SiteVisitsPage />} />
               <Route path="project" element={<ProjectInfoPage />} />
+              <Route path="documents" element={<BuyerDocumentsPage />} />
+              <Route path="help" element={<Suspense fallback={<RouteLoadingFallback />}><HelpCenterPage /></Suspense>} />
               <Route path="profile" element={<ProfilePage />} />
             </Route>
           </Route>

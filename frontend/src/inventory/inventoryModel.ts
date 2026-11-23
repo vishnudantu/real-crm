@@ -1,3 +1,5 @@
+import type { ProjectType } from "../admin/projectModel";
+
 export type UnitStatus =
   | "DRAFT"
   | "APPROVED"
@@ -179,6 +181,82 @@ export function buildUnitsQuery(params: FetchUnitsParams): string {
 // Pure helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Unit authoring guidance derived from the project's type. Mirrors
+ * backend/app/modules/inventory/authoring.py: tower+floor for apartment and
+ * commercial units, plot_number for villa and plot units, no restrictions for
+ * mixed or untyped projects. Used for form hints and for matching server
+ * validation errors back to form fields.
+ */
+export interface UnitAuthoringGuidance {
+  requiresTower: boolean;
+  requiresFloor: boolean;
+  requiresPlotNumber: boolean;
+  disallowsPlotNumber: boolean;
+  disallowsTower: boolean;
+  floorHint: string | null;
+  summary: string;
+}
+
+export function unitAuthoringGuidance(
+  projectType: ProjectType | null | undefined,
+): UnitAuthoringGuidance {
+  const none: UnitAuthoringGuidance = {
+    requiresTower: false,
+    requiresFloor: false,
+    requiresPlotNumber: false,
+    disallowsPlotNumber: false,
+    disallowsTower: false,
+    floorHint: null,
+    summary: "This project has no type restrictions; tower, floor and plot number are all optional.",
+  };
+  if (!projectType || projectType === "MIXED") {
+    return {
+      ...none,
+      summary: projectType === "MIXED"
+        ? "Mixed development: units may use either tower/floor or plot numbering; no per-type restrictions apply."
+        : none.summary,
+    };
+  }
+  if (projectType === "APARTMENT" || projectType === "COMMERCIAL") {
+    return {
+      requiresTower: true,
+      requiresFloor: true,
+      requiresPlotNumber: false,
+      disallowsPlotNumber: projectType === "APARTMENT",
+      disallowsTower: false,
+      floorHint: null,
+      summary: projectType === "APARTMENT"
+        ? "Apartment units require tower and floor. Plot number must be left empty."
+        : `Commercial units require tower and floor.`,
+    };
+  }
+  // VILLA and PLOT
+  const noun = projectType.toLowerCase();
+  return {
+    requiresTower: false,
+    requiresFloor: false,
+    requiresPlotNumber: true,
+    disallowsPlotNumber: false,
+    disallowsTower: true,
+    floorHint: "Ground/basement blocks such as G, GF or B1 are allowed; numbered storeys are not.",
+    summary: `${noun.charAt(0).toUpperCase() + noun.slice(1)} units require a plot number. Tower must be empty; floor may be empty or a ground/basement block such as G or B1.`,
+  };
+}
+
+/** Map one row of CSV onto the fields relevant to the project's type, if known. */
+export function plotNumberColumnRequired(projectType: ProjectType | null | undefined): boolean {
+  return projectType === "VILLA" || projectType === "PLOT";
+}
+
+/** Server-side inventory errors arrive as human-readable sentences joined by spaces. */
+export function splitUnitValidationMessage(message: string): string[] {
+  return message
+    .split(/(?<=\.)\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 export type StatusTone = "emerald" | "amber" | "violet" | "blue" | "sky" | "rose" | "slate" | "stone";
 export type StatusIconName =
   | "circle-check"
@@ -329,6 +407,7 @@ interface CsvHeader {
   tower: number;
   position: number;
   built_up_area: number;
+  plot_number: number;
   status: number;
 }
 
@@ -345,6 +424,9 @@ const HEADER_ALIASES: Readonly<Record<string, keyof CsvHeader>> = {
   position: "position",
   built_up_area: "built_up_area",
   built_up_area_sqft: "built_up_area",
+  plot_number: "plot_number",
+  plot: "plot_number",
+  plot_no: "plot_number",
   status: "status",
 };
 
@@ -388,9 +470,12 @@ function emptyToNull(value: string | undefined): string | null {
 const CREATABLE_STATUSES: readonly UnitStatus[] = ["DRAFT", "APPROVED", "AVAILABLE"];
 
 /**
- * Parse pasted CSV (code,configuration,facing,carpet_area[,floor,tower,...])
+ * Parse pasted CSV (code,configuration,facing,carpet_area[,floor,tower,plot_number,...])
  * into UnitCreateRequest rows with per-row validation errors. Valid rows are
  * still returned alongside errors so the backend dry-run sees every good row.
+ * plot_number (aliases plot, plot_no) is required by the server for villa and
+ * plot projects and forbidden for apartment projects; that per-type check is
+ * intentionally left to the server so the dry run surfaces its message verbatim.
  */
 export function bulkCsvParse(csv: string, projectId: string): BulkCsvResult {
   const rows: UnitCreateRequest[] = [];
@@ -468,7 +553,7 @@ export function bulkCsvParse(csv: string, projectId: string): BulkCsvResult {
       tower: emptyToNull(cell("tower")),
       carpet_area_sqft: carpet,
       built_up_area_sqft: builtUp,
-      plot_number: null,
+      plot_number: emptyToNull(cell("plot_number")),
       facing: emptyToNull(cell("facing")),
       views: null,
       saleable: true,
@@ -492,4 +577,27 @@ export function holdCountdown(expiresAt: string, nowMs: number): string {
   const seconds = totalSeconds % 60;
   if (hours > 0) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
   return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+/** Header the bulk CSV parser accepts (aliases covered: code/config/plot/...). */
+export const SAMPLE_UNIT_CSV = [
+  "code,configuration,facing,carpet_area,floor,tower,position,built_up_area,plot_number,status",
+  "A-101,2 BHK,East,1200,1,A,Corner,1350,,AVAILABLE",
+  "A-102,3 BHK,West,1450,2,A,,1600,,AVAILABLE",
+  "A-103,3 BHK,North East,1500,3,B,,1680,,DRAFT",
+  "P-201,Plot,North,2400,,,,2400,P-201,AVAILABLE",
+].join("\n");
+
+/** Trigger a browser download of a text file (sample CSV for bulk import). */
+export function downloadTextFile(filename: string, text: string): void {
+  const blob = new Blob([text], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }

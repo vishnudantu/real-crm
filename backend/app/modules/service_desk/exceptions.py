@@ -33,3 +33,20 @@ class CommentBodyError(HTTPException):
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Comment body must contain 1 to 4000 characters.",
         )
+
+
+class ArticleNotFoundError(HTTPException):
+    """Raised for missing OR unpublished articles — never discloses drafts."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Article not found."
+        )
+
+
+class SurveyNotOpenError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ratings are only accepted after the ticket is closed.",
+        )

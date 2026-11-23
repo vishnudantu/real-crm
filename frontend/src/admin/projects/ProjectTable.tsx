@@ -7,6 +7,7 @@ import {
   Shield,
 } from "lucide-react";
 import type { AdminProjectStatus, ProjectItem } from "../projectModel";
+import { projectTypeLabel } from "../projectModel";
 import { formatDate } from "../users/UserTable";
 
 type ProjectTableProps = {
@@ -15,6 +16,19 @@ type ProjectTableProps = {
   onEdit: (project: ProjectItem) => void;
   onToggleStatus: (project: ProjectItem) => void;
 };
+
+/** Small neutral chip for the project's inventory taxonomy, if one is set. */
+export function ProjectTypeBadge({ projectType }: { projectType: string | null }) {
+  if (!projectType) return null;
+  return (
+    <span
+      className="ml-2 inline-flex items-center rounded-full border border-sky-200/70 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-sky-800"
+      title={`Project type: ${projectTypeLabel(projectType)}`}
+    >
+      {projectTypeLabel(projectType)}
+    </span>
+  );
+}
 
 export function ProjectStatusBadge({
   status,
@@ -99,6 +113,7 @@ export function ProjectTable({
                       <div className="max-w-xs">
                         <p className="font-semibold text-charcoal text-sm">
                           {p.name}
+                          <ProjectTypeBadge projectType={p.project_type} />
                         </p>
                         <p className="text-xs text-charcoal/50">/{p.slug}</p>
                         {p.description && (
