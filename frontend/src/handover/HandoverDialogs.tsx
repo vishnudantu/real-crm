@@ -30,7 +30,7 @@ export function CreateHandoverDialog({ onClose, onCreated }: { onClose: () => vo
   const [error, setError] = useState<string | null>(null);
   const projects = useQuery({ queryKey: ["admin", "projects", "handover"], queryFn: () => fetchProjects({ page: 1, pageSize: 100 }) });
   const units = useQuery({ queryKey: ["admin", "handover", "units", projectId], queryFn: () => fetchUnits({ projectId, page: 1, pageSize: 100 }), enabled: Boolean(projectId) });
-  const bookings = useQuery({ queryKey: ["admin", "handover", "bookings", projectId], queryFn: () => fetchSaleBookings({ projectId, page: 1, pageSize: 100 }), enabled: Boolean(projectId) });
+  const bookings = useQuery({ queryKey: ["admin", "handover", "bookings", projectId], queryFn: () => fetchSaleBookings({ projectId, page: 1, pageSize: 100 }), enabled: Boolean(projectId), select: (data) => ({ ...data, items: data.items.filter((b) => b.status !== "CANCELLED") }) });
   const mutation = useMutation({
     mutationFn: createHandoverCase,
     onSuccess: async (created) => { await queryClient.invalidateQueries({ queryKey: handoverKeys.all }); onCreated(created.id); onClose(); },

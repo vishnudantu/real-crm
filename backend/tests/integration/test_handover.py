@@ -487,3 +487,49 @@ def test_consented_completion_emits_transactional_outbox_once(
         assert evaluate(session, delivery=deliveries[0]).allowed is True
         keys = session.scalars(select(KeyHandover).where(KeyHandover.case_id == UUID(case["id"]))).all()
         assert keys == []
+
+
+def test_cancelled_booking_blocks_agreement_gate_and_completion(
+    client: TestClient, env: dict, test_session_factory: sessionmaker[Session]
+) -> None:
+    case = _pay_and_create_ready_case(test_session_factory, client, env)
+    with test_session_factory() as session:
+        booking = session.get(SaleBooking, env["booking_id"])
+        booking.status = SaleStatus.CANCELLED.value
+        # Stale agreement_date must NOT pass the gate after cancellation.
+        session.commit()
+    body = client.get(f"{API}/cases/{case['id']}/checklist", headers=env["sales"]).json()
+    agreement = next(c for c in body["conditions"] if c["code"] == "AGREEMENT")
+    assert agreement["met"] is False
+    assert "cancelled" in agreement["detail"].lower()
+    assert body["score"] < 100
+    response = client.post(f"{API}/cases/{case['id']}/complete", json={"override_reason": "Trying to bypass."}, headers=env["admin"])
+    assert response.status_code == 409
+    assert "cancelled" in response.text.lower()
+
+
+def test_no_op_case_patch_does_not_write_audit(
+    client: TestClient, env: dict, test_session_factory: sessionmaker[Session]
+) -> None:
+    case = _create_case(client, env)
+    response = client.patch(f"{API}/cases/{case['id']}", json={}, headers=env["admin"])
+    assert response.status_code == 200
+    with test_session_factory() as session:
+        count = len(session.scalars(select(AuditLog).where(
+            AuditLog.action == "UPDATE_HANDOVER_CHECKLIST", AuditLog.resource_id == case["id"]
+        )).all())
+        assert count == 0
+
+
+def test_buyer_assignee_rejected(
+    client: TestClient, env: dict, test_session_factory: sessionmaker[Session], user_factory
+) -> None:
+    buyer_user = user_factory(role=RoleName.BUYER, email=f"assignee-{uuid4().hex[:6]}@example.com")
+    case = _create_case(client, env)
+    response = client.post(
+        f"{API}/cases/{case['id']}/snags",
+        json={"room": "Hall", "description": "Wall crack", "severity": "MINOR", "assigned_user_id": str(buyer_user.id)},
+        headers=env["admin"],
+    )
+    assert response.status_code == 404
+    assert "staff" in response.text.lower()

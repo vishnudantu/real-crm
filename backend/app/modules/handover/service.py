@@ -79,9 +79,19 @@ def get_key(session: Session, *, tenant_id: UUID, key_id: UUID) -> KeyHandover:
 def _validate_assignee(session: Session, *, actor: User, user_id: UUID | None) -> None:
     if user_id is None:
         return
-    assignee = session.scalar(select(User).where(
-        User.id == user_id, User.tenant_id == actor.tenant_id, User.is_active.is_(True)
-    ))
+    from app.modules.users.models import Role, RoleName
+
+    staff_roles = (RoleName.ADMIN.value, RoleName.MANAGER.value, RoleName.SALES_EXECUTIVE.value)
+    assignee = session.scalar(
+        select(User)
+        .join(Role, Role.id == User.role_id)
+        .where(
+            User.id == user_id,
+            User.tenant_id == actor.tenant_id,
+            User.is_active.is_(True),
+            Role.name.in_(staff_roles),
+        )
+    )
     if assignee is None:
         raise _not_found("Assigned staff member")
 
@@ -139,7 +149,10 @@ def create_case(session: Session, *, actor: User, payload: HandoverCaseCreate) -
 def update_case(session: Session, *, actor: User, case_id: UUID, payload: HandoverCasePatch) -> HandoverCase:
     case = get_case(session, tenant_id=actor.tenant_id, case_id=case_id)
     _require_not_handed_over(case)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        return case
+    for field, value in changes.items():
         setattr(case, field, value)
     session.add_all([
         AuditLog(
@@ -215,14 +228,23 @@ def build_checklist(session: Session, *, tenant_id: UUID, case_id: UUID) -> dict
         SnagItem.case_id == case.id, SnagItem.tenant_id == tenant_id,
         SnagItem.status.not_in((SnagStatus.VERIFIED.value, SnagStatus.CLOSED.value)),
     )) or 0)
-    agreement_met = booking is not None and (
-        booking.status in AGREEMENT_STATUSES or booking.agreement_date is not None
+    agreement_met = (
+        booking is not None
+        and booking.status != SaleStatus.CANCELLED.value
+        and (
+            booking.status in AGREEMENT_STATUSES
+            or booking.agreement_date is not None
+        )
     )
     possession_date = case.possession_date or (booking.expected_possession if booking else None)
     outstanding = financials["outstanding_paise"]
     conditions = [
         {"code": "AGREEMENT", "label": "Agreement signed", "met": agreement_met,
-         "detail": "Agreement is signed." if agreement_met else "A signed sale agreement is required."},
+         "detail": (
+             "Sale is cancelled; handover is not permitted."
+             if booking is not None and booking.status == SaleStatus.CANCELLED.value
+             else ("Agreement is signed." if agreement_met else "A signed sale agreement is required.")
+         )},
         {"code": "FINANCIALS", "label": "Financials cleared", "met": outstanding == 0,
          "detail": "Live outstanding balance is zero." if outstanding == 0 else
          (f"Outstanding balance: {outstanding} paise (voided receipts excluded)." if outstanding is not None else "No linked booking ledger is available.")},
@@ -441,9 +463,19 @@ def delete_keys(session: Session, *, actor: User, key_id: UUID) -> None:
 
 
 def complete_case(session: Session, *, actor: User, case_id: UUID, override_reason: str | None) -> HandoverCase:
-    case = get_case(session, tenant_id=actor.tenant_id, case_id=case_id)
+    # Row-level lock: concurrent completions serialize; the second sees HANDED_OVER.
+    case = session.scalar(
+        select(HandoverCase)
+        .where(HandoverCase.id == case_id, HandoverCase.tenant_id == actor.tenant_id)
+        .with_for_update()
+    )
+    if case is None:
+        raise _not_found("Handover case")
     if case.status == HandoverStatus.HANDED_OVER.value:
         raise _conflict("This handover is already complete.")
+    booking = _booking(session, case)
+    if booking is not None and booking.status == SaleStatus.CANCELLED.value:
+        raise _conflict("Cannot complete handover for a cancelled sale.")
     checklist = build_checklist(session, tenant_id=actor.tenant_id, case_id=case_id)
     if checklist["score"] < 100 and not override_reason:
         codes = ", ".join(blocker["code"] for blocker in checklist["blockers"])
@@ -457,7 +489,6 @@ def complete_case(session: Session, *, actor: User, case_id: UUID, override_reas
     case.readiness = HandoverChecklist.model_validate(checklist).model_dump(mode="json")
     case.handed_over_at = now
     case.handed_over_by_id = actor.id
-    booking = _booking(session, case)
     from app.modules.messaging.engine import emit_event
 
     emit_event(
@@ -493,11 +524,34 @@ def _recipient(session: Session, booking: SaleBooking | None) -> str | None:
 
 
 def buyer_download_photo(session: Session, *, actor: User, snag_id: UUID) -> tuple[SnagItem, Path]:
-    snag = get_snag(session, tenant_id=actor.tenant_id, snag_id=snag_id)
-    cases = buyer_cases(session, actor=actor)
-    if not any(snag.id == item.id for case in cases for item in case["snags"]):
+    """Single-query ownership: snag -> case -> booking -> opportunity -> contact."""
+    contact = resolve_buyer_contact(session, actor)
+    if contact is None:
+        raise _not_found("Buyer handover")
+    snag = session.scalar(
+        select(SnagItem)
+        .join(HandoverCase, HandoverCase.id == SnagItem.case_id)
+        .join(SaleBooking, SaleBooking.id == HandoverCase.booking_id)
+        .join(Opportunity, Opportunity.lead_id == SaleBooking.lead_id)
+        .where(
+            SnagItem.id == snag_id,
+            SnagItem.tenant_id == actor.tenant_id,
+            HandoverCase.tenant_id == actor.tenant_id,
+            SaleBooking.tenant_id == actor.tenant_id,
+            SaleBooking.unit_id == HandoverCase.unit_id,
+            Opportunity.tenant_id == actor.tenant_id,
+            Opportunity.contact_id == contact.id,
+            Opportunity.project_id == SaleBooking.project_id,
+        )
+    )
+    if snag is None or snag.photo_evidence_path is None:
         raise _not_found("Snag photo")
-    return download_snag_photo(session, actor=actor, snag_id=snag_id)
+    from app.modules.bookings import evidence_storage
+
+    try:
+        return snag, evidence_storage.resolve_path(snag.photo_evidence_path)
+    except ValueError as exc:
+        raise _not_found("Snag photo") from exc
 
 
 def buyer_cases(session: Session, *, actor: User) -> list[dict]:
@@ -529,12 +583,21 @@ def buyer_cases(session: Session, *, actor: User) -> list[dict]:
     ).all())
     if not rows:
         raise _not_found("Buyer handover")
+    case_ids = [case.id for case, _unit, _booking in rows]
+    all_snags = list(session.scalars(
+        select(SnagItem).where(
+            SnagItem.case_id.in_(case_ids), SnagItem.tenant_id == actor.tenant_id
+        ).order_by(SnagItem.created_at, SnagItem.id)
+    ).all())
+    snags_by_case: dict[UUID, list[SnagItem]] = {}
+    for snag in all_snags:
+        snags_by_case.setdefault(snag.case_id, []).append(snag)
     return [
         {
             "id": case.id, "unit_id": case.unit_id, "unit_number": unit.internal_code,
             "status": case.status, "expected_possession": booking.expected_possession,
             "possession_date": case.possession_date, "handed_over_at": case.handed_over_at,
-            "snags": list_snags(session, tenant_id=actor.tenant_id, case_id=case.id),
+            "snags": snags_by_case.get(case.id, []),
         }
         for case, unit, booking in rows
     ]
