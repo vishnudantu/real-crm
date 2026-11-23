@@ -36,7 +36,10 @@ const SETTINGS_CHILDREN: readonly NavigationDefinition[] = [
 const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
   {
     label: "Overview",
-    items: [{ label: "Dashboard", shortLabel: "Home", to: "/admin", exact: true }],
+    items: [
+      { label: "Dashboard", shortLabel: "Home", to: "/admin", exact: true },
+      { label: "Sales War Room", shortLabel: "War Room", to: "/admin/war-room" },
+    ],
   },
   {
     label: "Engage",
@@ -159,6 +162,10 @@ export function buildAdminNav(
       .map((item) => visibleItem(item, features))
       .filter((item): item is AdminNavigationItem => item !== null),
   })).filter((group) => group.items.length > 0);
+}
+
+export function buildManagerNav(): AdminNavigationGroup[] {
+  return [{ label: "Overview", items: [{ label: "Sales War Room", shortLabel: "War Room", to: "/admin/war-room" }] }];
 }
 
 export function buildAdminMobileNav(
