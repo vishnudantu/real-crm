@@ -4,10 +4,15 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import health
 from app.modules.ai_assistant.router import router as ai_assistant_router
+from app.modules.approvals.router import router as approvals_router
 from app.modules.auth.router import router as auth_router
 from app.modules.billing.router import router as billing_router
 from app.modules.bookings.router import bookings_router, slots_router
+from app.modules.buyer_docs.router import router as buyer_docs_router
+from app.modules.brokers.router import router as brokers_router
 from app.modules.connectors.router import router as connectors_router
+from app.modules.connect_dialer.router import router as connect_dialer_router
+from app.modules.construction.router import router as construction_router
 from app.modules.conversations.router import router as conversations_router
 from app.modules.customers.router import opportunities_router, router as customers_router
 from app.modules.dashboard.router import router as dashboard_router
@@ -27,14 +32,20 @@ from app.modules.omnichannel.widget_router import widget_router
 from app.modules.postsales.router import router as postsales_router
 from app.modules.operator.router import router as operator_router
 from app.modules.projects.router import router as projects_router
+from app.modules.reconciliation.router import router as reconciliation_router
 from app.modules.settings.router import settings_router
+from app.modules.service_desk.router import router as service_desk_router
 from app.modules.tenancy.router import router as tenancy_router
+from app.modules.teamchat.router import alias_router as teamchat_alias_router
+from app.modules.tenant_ai.router import router as tenant_ai_router
 from app.modules.teamchat.router import router as teamchat_router
 from app.modules.users.router import router as users_router
+from app.modules.voice_intel.router import router as voice_intel_router
 
 api_router = APIRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
 api_router.include_router(auth_router)
+api_router.include_router(approvals_router)
 api_router.include_router(users_router)
 api_router.include_router(projects_router)
 api_router.include_router(leads_router)
@@ -45,6 +56,8 @@ api_router.include_router(messages_router)
 api_router.include_router(ai_assistant_router)
 api_router.include_router(slots_router)
 api_router.include_router(bookings_router)
+api_router.include_router(buyer_docs_router)
+api_router.include_router(brokers_router)
 api_router.include_router(follow_ups_router)
 api_router.include_router(handoffs_router)
 api_router.include_router(notifications_router)
@@ -59,8 +72,15 @@ api_router.include_router(integrations_router)
 api_router.include_router(inventory_router)
 api_router.include_router(billing_router)
 api_router.include_router(postsales_router)
+api_router.include_router(construction_router)
+api_router.include_router(reconciliation_router)
 api_router.include_router(documents_router)
 api_router.include_router(teamchat_router)
+api_router.include_router(teamchat_alias_router)
+api_router.include_router(service_desk_router)
 api_router.include_router(omnichannel_router)
+api_router.include_router(tenant_ai_router)
 api_router.include_router(channel_webhook_router)
 api_router.include_router(widget_router)
+api_router.include_router(voice_intel_router)
+api_router.include_router(connect_dialer_router)

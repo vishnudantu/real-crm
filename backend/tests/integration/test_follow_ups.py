@@ -43,6 +43,20 @@ def _past(hours: int = 24) -> datetime:
     return datetime.now(UTC) - timedelta(hours=hours)
 
 
+def _due_today() -> datetime:
+    """A moment guaranteed to be categorized DUE_TODAY regardless of run time.
+
+    Offsets relative to ``now`` (e.g. now+30min) race the wall clock: if the
+    suite computes the timestamp just before UTC midnight but the API
+    categorizes it just after, the bucket flips to tomorrow and the assertion
+    fails only at that boundary. Anchoring to midday UTC of the current day
+    keeps the follow-up inside the same calendar day for the whole request,
+    so the DUE_TODAY categorization is stable at any run time.
+    """
+    now = datetime.now(UTC)
+    return datetime(now.year, now.month, now.day, 12, 0, 0, tzinfo=UTC)
+
+
 def _create_active_project(client: TestClient, admin_headers: dict[str, str], name: str) -> dict[str, Any]:
     project = create_project(client, admin_headers, name=name)
     client.patch(
@@ -99,7 +113,7 @@ def test_create_and_list_follow_up(
     assign_lead(client, admin_headers, lead_id=lead["id"], executive_id=str(exec_1.id))
 
     # 2. Exec 1 creates a follow-up
-    sched_time = _future(hours=2)
+    sched_time = _due_today()
     create_payload = {
         "lead_id": lead["id"],
         "scheduled_at": sched_time.isoformat(),
@@ -154,12 +168,14 @@ def test_follow_up_metrics_and_categorization(
     )
     assign_lead(client, admin_headers, lead_id=lead["id"], executive_id=str(exec_1.id))
 
-    # Follow-up 1: Due Today
+    # Follow-up 1: Due Today. Anchored to midday UTC of the current day via the
+    # shared helper so the bucket cannot flip across the request at midnight.
+    due_today_at = _due_today()
     client.post(
         "/api/v1/follow-ups",
         json={
             "lead_id": lead["id"],
-            "scheduled_at": _future(hours=3).isoformat(),
+            "scheduled_at": due_today_at.isoformat(),
             "type": "CALL",
             "priority": "HIGH",
         },

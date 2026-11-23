@@ -25,6 +25,7 @@ from app.modules.teamchat.schemas import (
     TeamChannelMemberResponse,
     TeamChannelResponse,
     TeamMessageCreateRequest,
+    TeamMessageEditRequest,
     TeamMessageResponse,
     TeamStaffUserResponse,
 )
@@ -134,6 +135,7 @@ def _channel_response(
         topic=channel.topic,
         kind=channel.kind,
         is_general=channel.is_general,
+        is_private=channel.is_private,
         created_by=channel.created_by,
         created_at=channel.created_at,
         unread_count=unread,
@@ -191,7 +193,10 @@ def create_channel(
     if existing is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "A channel with this name already exists.")
     channel = TeamChannel(
-        tenant_id=actor.tenant_id, name=payload.name, topic=payload.topic,
+        tenant_id=actor.tenant_id, name=payload.name,
+        # /team-chat alias callers may send description; canonical uses topic.
+        topic=payload.topic or payload.description,
+        is_private=payload.is_private,
         kind=TeamChannelKind.CHANNEL.value, created_by=actor.id,
     )
     session.add(channel)
@@ -305,6 +310,11 @@ def join_channel(session: Session, *, actor: User, channel_id: UUID) -> TeamChan
         unread = _unread_counts(session, tenant_id=actor.tenant_id, user_id=actor.id)
         return _channel_with_members(
             session, channel=channel, unread=unread.get(channel.id, 0)
+        )
+    if channel.is_private:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "This is a private channel. Ask a member to add you.",
         )
     session.add(TeamChannelMember(
         tenant_id=actor.tenant_id, channel_id=channel.id, user_id=actor.id,
@@ -423,6 +433,31 @@ def send_message(
         body=body, mentions=[str(user_id) for user_id in dict.fromkeys(payload.mentions)],
     )
     session.add(message)
+    session.commit()
+    return _message_response(message)
+
+
+def edit_message(
+    session: Session, *, actor: User, message_id: UUID, payload: TeamMessageEditRequest
+) -> TeamMessageResponse:
+    """Edit a message's body. Author-only and membership-checked."""
+    message = session.scalar(
+        select(TeamMessage).where(
+            TeamMessage.id == message_id, TeamMessage.tenant_id == actor.tenant_id
+        )
+    )
+    if message is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Message not found.")
+    _require_membership(
+        session, tenant_id=actor.tenant_id, channel_id=message.channel_id, user_id=actor.id
+    )
+    if message.author_user_id != actor.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the author can edit this message.")
+    body = payload.body.strip()
+    if not 1 <= len(body) <= 4000:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Message body must contain 1 to 4000 characters.")
+    message.body = body
+    message.edited_at = utcnow()
     session.commit()
     return _message_response(message)
 

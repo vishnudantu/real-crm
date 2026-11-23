@@ -7,7 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.bookings.models import Booking, BookingStatus, VisitSlot
+from app.modules.bookings.models import Booking, BookingStatus, CarRequestStatus, VisitSlot
+from app.modules.users.models import RoleName
 
 
 class VisitSlotCreateRequest(BaseModel):
@@ -198,6 +199,43 @@ class BookingStatusUpdateRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=1000)
 
 
+class CarRequestCreateRequest(BaseModel):
+    """Input payload for a chauffeur car request on a site-visit booking."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: str = Field(min_length=1, max_length=2000)
+    approver_id: UUID | None = None
+
+
+class VisitEvidenceResponse(BaseModel):
+    """Evidence metadata returned to staff; never includes absolute storage paths."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    booking_id: UUID
+    content_type: str
+    size_bytes: int
+    content_sha256: str
+    notes: str | None = None
+    status: str
+    uploaded_by_id: UUID | None = None
+    verified_by_id: UUID | None = None
+    verified_at: datetime | None = None
+    review_note: str | None = None
+    created_at: datetime
+
+
+class VisitEvidenceReviewRequest(BaseModel):
+    """Verify or reject a submitted evidence artifact."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    decision: str = Field(pattern="^(VERIFIED|REJECTED)$")
+    review_note: str | None = Field(default=None, max_length=2000)
+
+
 class BookingMetricsResponse(BaseModel):
     """Aggregate metrics for admin site visits and availability dashboard."""
 
@@ -222,6 +260,7 @@ class BookingResponse(BaseModel):
     buyer_id: UUID
     executive_id: UUID | None
     status: BookingStatus
+    car_request_status: CarRequestStatus
     cancellation_reason: str | None
     cancelled_at: datetime | None
     cancelled_by_id: UUID | None
@@ -250,6 +289,7 @@ class BookingResponse(BaseModel):
             buyer_id=booking.buyer_id,
             executive_id=booking.executive_id,
             status=BookingStatus(booking.status),
+            car_request_status=CarRequestStatus(booking.car_request_status),
             cancellation_reason=booking.cancellation_reason,
             cancelled_at=booking.cancelled_at,
             cancelled_by_id=booking.cancelled_by_id,

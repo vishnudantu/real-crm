@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.modules.approvals.schemas import ApprovalRequestResponse
+from app.modules.approvals.service import request_unit_discount
 from app.modules.auth.dependencies import AdminUser, CurrentUser, require_roles
 from app.modules.inventory import repository, service
 from app.modules.inventory.exceptions import UnitNotFoundError
@@ -16,6 +18,7 @@ from app.modules.inventory.schemas import (
     AvailabilityResponse,
     BulkUnitCreateRequest,
     BulkUnitCreateResponse,
+    DiscountRequestCreateRequest,
     HoldConvertRequest,
     HoldConvertResponse,
     HoldCreateRequest,
@@ -35,6 +38,11 @@ from app.modules.users.models import RoleName, User
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 HoldWriter = Annotated[
+    User,
+    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
+]
+
+DiscountRequester = Annotated[
     User,
     Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
 ]
@@ -215,3 +223,28 @@ def availability_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.availability_summary(db, tenant_id=current_user.tenant_id, project_id=project_id)
+
+
+@router.post(
+    "/units/{unit_id}/discount-request",
+    response_model=ApprovalRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Propose a discount on a unit (staff only)",
+)
+def request_unit_discount_endpoint(
+    unit_id: UUID,
+    payload: DiscountRequestCreateRequest,
+    requester: DiscountRequester,
+    db: Annotated[Session, Depends(get_db)],
+) -> ApprovalRequestResponse:
+    """Open a DISCOUNT approval carrying amount_paise and flag the unit PENDING."""
+
+    request = request_unit_discount(
+        db,
+        actor=requester,
+        unit_id=unit_id,
+        amount_paise=payload.amount_paise,
+        reason=payload.reason,
+        approver_id=payload.approver_id,
+    )
+    return ApprovalRequestResponse.model_validate(request)

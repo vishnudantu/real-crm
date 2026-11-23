@@ -6,8 +6,10 @@ from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+from uuid import UUID
 
 from app.modules.inventory.models import (
+    DiscountStatus,
     HoldReleaseSource,
     HoldState,
     UnitEventSource,
@@ -75,6 +77,8 @@ class UnitResponse(BaseModel):
     saleable: bool
     status: UnitStatus
     status_reason: str | None
+    approved_discount_paise: int | None = None
+    discount_status: DiscountStatus = DiscountStatus.NONE
     rera_disclosure_json: dict
     created_at: datetime
     updated_at: datetime
@@ -196,3 +200,17 @@ class AvailabilityResponse(BaseModel):
     project_id: UUID
     counts: dict[str, int]
     total: int
+
+
+class DiscountRequestCreateRequest(BaseModel):
+    """Input payload for a discount proposal on a canonical unit.
+
+    ``amount_paise`` is the proposed discount in paise; it must be strictly
+    positive and is capped at 20% of the unit price once units carry one.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    amount_paise: int = Field(gt=0)
+    reason: str = Field(min_length=1, max_length=2000)
+    approver_id: UUID | None = None

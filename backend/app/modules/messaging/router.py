@@ -123,3 +123,17 @@ def send_test_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.send_test(db, actor=admin, payload=payload)
+
+
+@router.post("/seed-lifecycle")
+def seed_lifecycle_endpoint(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Seed default lifecycle templates + trigger rules for the caller's tenant.
+
+    Idempotent: existing rules/templates are skipped, so a tenant's own edits
+    are preserved on re-seed. This is what makes the thank-you-after-visit,
+    booking-confirmation, and receipt emails actually fire.
+    """
+    return service.seed_lifecycle_for_tenant(db, actor=admin)

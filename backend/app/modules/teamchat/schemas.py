@@ -9,9 +9,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TeamChannelCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=80)
     topic: str | None = Field(default=None, max_length=500)
+    # Alias accepted by the /team-chat compatibility router; mapped to topic.
+    description: str | None = Field(default=None, max_length=500)
     member_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    # Optional private-channel flag accepted by the /team-chat alias; public
+    # staff channels (the default) are joinable by any staff member.
+    is_private: bool = False
 
     @field_validator("name", mode="before")
     @classmethod
@@ -33,6 +40,12 @@ class TeamDirectCreateRequest(BaseModel):
 class TeamMessageCreateRequest(BaseModel):
     body: str = Field(min_length=1, max_length=4000)
     mentions: list[UUID] = Field(default_factory=list, max_length=100)
+
+
+class TeamMessageEditRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    body: str = Field(min_length=1, max_length=4000)
 
     @field_validator("body", mode="before")
     @classmethod
@@ -65,6 +78,7 @@ class TeamChannelResponse(BaseModel):
     topic: str | None
     kind: str
     is_general: bool
+    is_private: bool = False
     created_by: UUID | None
     created_at: datetime
     unread_count: int = 0

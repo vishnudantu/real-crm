@@ -137,3 +137,15 @@ class InvalidBookingStatusTransitionError(HTTPException):
             detail=f"Cannot transition booking from {current_status} to {requested_status}.",
         )
 
+
+class CarRequestAlreadyRequestedError(HTTPException):
+    """A car request is already PENDING, APPROVED, or REJECTED on the booking."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This booking already has a car request; cancel it before raising another."
+            ),
+        )
+

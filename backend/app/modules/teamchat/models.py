@@ -57,6 +57,9 @@ class TeamChannel(TenantOwned, Base):
         server_default=TeamChannelKind.CHANNEL.value,
     )
     is_general: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_private: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_by: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

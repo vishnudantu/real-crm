@@ -212,3 +212,33 @@ def send_test(session: Session, *, actor: User, payload) -> MessageDelivery:
     session.commit()
     session.refresh(row)
     return row
+
+
+def seed_lifecycle_for_tenant(session: Session, *, actor: User) -> dict[str, int]:
+    """Seed the default lifecycle templates + trigger rules for the actor's tenant."""
+    from app.modules.messaging.defaults import seed_lifecycle_messages
+
+    result = seed_lifecycle_messages(session, tenant_id=actor.tenant_id)
+    session.commit()
+    return result
+
+
+def seed_lifecycle_for_all_tenants(session: Session) -> dict[str, int]:
+    """Seed lifecycle messages for every tenant (operator/backfill use).
+
+    Idempotent per tenant; a tenant that already has rules is skipped by the
+    per-rule dedup inside seed_lifecycle_messages.
+    """
+    from app.modules.messaging.defaults import seed_lifecycle_messages
+    from app.modules.tenancy.models import Tenant
+
+    totals = {"templates_created": 0, "rules_created": 0, "skipped": 0, "tenants": 0}
+    tenant_ids = session.scalars(select(Tenant.id)).all()
+    for tenant_id in tenant_ids:
+        result = seed_lifecycle_messages(session, tenant_id=tenant_id)
+        totals["templates_created"] += result["templates_created"]
+        totals["rules_created"] += result["rules_created"]
+        totals["skipped"] += result["skipped"]
+        totals["tenants"] += 1
+    session.commit()
+    return totals

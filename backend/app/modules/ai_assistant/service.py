@@ -179,8 +179,14 @@ def chat(
     )
 
     from app.modules.ai_assistant.provider import resolve_ai_client
+    from app.modules.tenant_ai.service import resolve_provider_config
 
-    client = groq_client if groq_client is not None else resolve_ai_client()
+    if groq_client is not None:
+        # Explicit injection (tests, manual callers) always wins.
+        client = groq_client
+    else:
+        tenant_config = resolve_provider_config(session, tenant_id=actor.tenant_id)
+        client = resolve_ai_client(tenant_config=tenant_config)
     assistant_reply_text: str
     tools_used: bool = False
 

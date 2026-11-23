@@ -36,6 +36,20 @@ class DocumentStatus(StrEnum):
     VOIDED = "VOIDED"
 
 
+class DocumentReviewState(StrEnum):
+    """Delivery-gate lifecycle for an issued document (P0.3).
+
+    ``APPROVED`` is the server default so every pre-existing document keeps
+    behaving as already-approved; only the prepare flow writes the pending
+    state and only an admin approval releases it for send.
+    """
+
+    PENDING_REVIEW = "PENDING_REVIEW"
+    APPROVED_FOR_SEND = "APPROVED_FOR_SEND"
+    APPROVED = "APPROVED"
+    VOIDED = "VOIDED"
+
+
 def utcnow() -> datetime:
     return datetime.now(UTC)
 
@@ -92,10 +106,15 @@ class Document(TenantOwned, Base):
             "reference_type IN ('installment','receipt')", name="document_reference_type_valid"
         ),
         CheckConstraint("status IN ('DRAFT','ISSUED','VOIDED')", name="document_status_valid"),
+        CheckConstraint(
+            "review_state IN ('PENDING_REVIEW','APPROVED_FOR_SEND','APPROVED','VOIDED')",
+            name="document_review_state_valid",
+        ),
         CheckConstraint("template_version > 0", name="document_template_version_positive"),
         CheckConstraint("length(content_sha256) = 64", name="document_sha256_valid"),
         Index("ix_documents_tenant_kind_created", "tenant_id", "kind", "created_at"),
         Index("ix_documents_tenant_reference", "tenant_id", "reference_type", "reference_id"),
+        Index("ix_documents_tenant_review_state", "tenant_id", "review_state"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -118,6 +137,14 @@ class Document(TenantOwned, Base):
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_state: Mapped[str] = mapped_column(
+        String(24), nullable=False, default=DocumentReviewState.APPROVED.value,
+        server_default=DocumentReviewState.APPROVED.value,
+    )
+    approved_by: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

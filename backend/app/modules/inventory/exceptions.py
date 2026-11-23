@@ -67,3 +67,13 @@ class BulkCreateRowError(ValueError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+class DiscountAlreadyRequestedError(HTTPException):
+    """A discount request is already PENDING, APPROVED, or REJECTED on the unit."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status.HTTP_409_CONFLICT,
+            "This unit already has a discount request; cancel it before raising another.",
+        )

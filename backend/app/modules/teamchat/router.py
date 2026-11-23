@@ -17,6 +17,7 @@ from app.modules.teamchat.schemas import (
     TeamChannelResponse,
     TeamDirectCreateRequest,
     TeamMessageCreateRequest,
+    TeamMessageEditRequest,
     TeamMessageListResponse,
     TeamMessageResponse,
     TeamReadResponse,
@@ -101,6 +102,30 @@ def send_message(
     return service.send_message(db, actor=actor, channel_id=channel_id, payload=payload)
 
 
+@router.patch(
+    "/channels/{channel_id}/messages/{message_id}",
+    response_model=TeamMessageResponse,
+)
+def edit_message_scoped(
+    channel_id: UUID,
+    message_id: UUID,
+    payload: TeamMessageEditRequest,
+    actor: StaffUser,
+    db: Database,
+) -> TeamMessageResponse:
+    return service.edit_message(db, actor=actor, message_id=message_id, payload=payload)
+
+
+@router.patch("/messages/{message_id}", response_model=TeamMessageResponse)
+def edit_message(
+    message_id: UUID,
+    payload: TeamMessageEditRequest,
+    actor: StaffUser,
+    db: Database,
+) -> TeamMessageResponse:
+    return service.edit_message(db, actor=actor, message_id=message_id, payload=payload)
+
+
 @router.post("/channels/{channel_id}/read", response_model=TeamReadResponse)
 def mark_read(channel_id: UUID, actor: StaffUser, db: Database) -> TeamReadResponse:
     membership = service.mark_read(db, actor=actor, channel_id=channel_id)
@@ -115,3 +140,46 @@ def join_channel(channel_id: UUID, actor: StaffUser, db: Database) -> TeamChanne
 @router.post("/channels/{channel_id}/leave", status_code=status.HTTP_204_NO_CONTENT)
 def leave_channel(channel_id: UUID, actor: StaffUser, db: Database) -> None:
     service.leave_channel(db, actor=actor, channel_id=channel_id)
+
+
+# ---------------------------------------------------------------------------
+# /team-chat compatibility alias
+#
+# The parallel swarm's tests called the hyphenated prefix; main's UI calls
+# /teamchat. Both prefixes are served by the same handlers so the two
+# spellings stay in sync. The alias is excluded from the OpenAPI schema to
+# avoid duplicated operations in the generated docs.
+# ---------------------------------------------------------------------------
+
+alias_router = APIRouter(prefix="/team-chat", tags=["teamchat"], include_in_schema=False)
+
+alias_router.add_api_route("/channels", list_channels, methods=["GET"],
+                           response_model=TeamChannelListResponse, include_in_schema=False)
+alias_router.add_api_route("/channels", create_channel, methods=["POST"],
+                           response_model=TeamChannelResponse, status_code=status.HTTP_201_CREATED,
+                           include_in_schema=False)
+alias_router.add_api_route("/channels/general", ensure_general, methods=["POST"],
+                           response_model=TeamChannelResponse, include_in_schema=False)
+alias_router.add_api_route("/direct", create_direct, methods=["POST"],
+                           response_model=TeamChannelResponse, status_code=status.HTTP_201_CREATED,
+                           include_in_schema=False)
+alias_router.add_api_route("/unread", unread_totals, methods=["GET"],
+                           response_model=TeamUnreadResponse, include_in_schema=False)
+alias_router.add_api_route("/members", search_staff, methods=["GET"],
+                           response_model=list[TeamStaffUserResponse], include_in_schema=False)
+alias_router.add_api_route("/channels/{channel_id}/messages", list_messages, methods=["GET"],
+                           response_model=TeamMessageListResponse, include_in_schema=False)
+alias_router.add_api_route("/channels/{channel_id}/messages", send_message, methods=["POST"],
+                           response_model=TeamMessageResponse, status_code=status.HTTP_201_CREATED,
+                           include_in_schema=False)
+alias_router.add_api_route("/channels/{channel_id}/messages/{message_id}", edit_message_scoped,
+                           methods=["PATCH"], response_model=TeamMessageResponse,
+                           include_in_schema=False)
+alias_router.add_api_route("/messages/{message_id}", edit_message, methods=["PATCH"],
+                           response_model=TeamMessageResponse, include_in_schema=False)
+alias_router.add_api_route("/channels/{channel_id}/read", mark_read, methods=["POST"],
+                           response_model=TeamReadResponse, include_in_schema=False)
+alias_router.add_api_route("/channels/{channel_id}/join", join_channel, methods=["POST"],
+                           response_model=TeamChannelResponse, include_in_schema=False)
+alias_router.add_api_route("/channels/{channel_id}/leave", leave_channel, methods=["POST"],
+                           include_in_schema=False)

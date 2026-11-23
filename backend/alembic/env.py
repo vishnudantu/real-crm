@@ -15,10 +15,15 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
 from app.db.base import Base
+from app.modules.approvals import models as approvals_models  # noqa: F401
 from app.modules.auth import models as auth_models  # noqa: F401
 from app.modules.billing import models as billing_models  # noqa: F401
 from app.modules.bookings import models as bookings_models  # noqa: F401
+from app.modules.buyer_docs import models as buyer_docs_models  # noqa: F401
+from app.modules.brokers import models as brokers_models  # noqa: F401
 from app.modules.connectors import models as connectors_models  # noqa: F401
+from app.modules.connect_dialer import models as connect_dialer_models  # noqa: F401
+from app.modules.construction import models as construction_models  # noqa: F401
 from app.modules.conversations import models as conversations_models  # noqa: F401
 from app.modules.customers import models as customers_models  # noqa: F401
 from app.modules.dashboard import models as dashboard_models  # noqa: F401
@@ -37,10 +42,14 @@ from app.modules.operator import deployments as operator_deployments  # noqa: F4
 from app.modules.plans import models as plans_models  # noqa: F401
 from app.modules.postsales import models as postsales_models  # noqa: F401
 from app.modules.projects import models as projects_models  # noqa: F401
+from app.modules.reconciliation import models as reconciliation_models  # noqa: F401
+from app.modules.service_desk import models as service_desk_models  # noqa: F401
 from app.modules.settings import models as settings_models  # noqa: F401
 from app.modules.tenancy import models as tenancy_models  # noqa: F401
+from app.modules.tenant_ai import models as tenant_ai_models  # noqa: F401
 from app.modules.teamchat import models as teamchat_models  # noqa: F401
 from app.modules.users import models  # noqa: F401
+from app.modules.voice_intel import models as voice_intel_models  # noqa: F401
 
 config = context.config
 

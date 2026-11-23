@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.modules.operator import control_plane, feature_service, features, service
+from app.modules.operator import control_plane, feature_service, features, pricing, service
 from app.modules.operator.dependencies import (
     CurrentOperator,
     get_current_operator,
@@ -259,6 +259,17 @@ def bulk_update_features(
     )
 
 
+@router.get("/tenants/{tenant_id}/pricing")
+def tenant_pricing(
+    tenant_id: UUID,
+    operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_READ))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Effective monthly price and per-module breakdown for one tenant."""
+
+    return pricing.compute_tenant_monthly_pricing(db, tenant_id)
+
+
 @router.get("/plans", response_model=list[PlanResponse])
 def list_plans(
     operator: Annotated[OperatorUser, Depends(require_operator_permission(OperatorPermission.TENANTS_READ))],
@@ -340,6 +351,7 @@ def feature_catalog(
             "label": spec.label,
             "description": spec.description,
             "default_enabled": spec.default_enabled,
+            "monthly_price_paise": spec.monthly_price_paise,
         }
         for spec in sorted(features.FEATURE_CATALOG, key=lambda s: s.key)
     ]

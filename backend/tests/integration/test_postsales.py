@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.modules.leads.models import Lead, LeadSource, LeadStatus
+from app.modules.approvals.models import ApprovalRequest, ApprovalStatus
 from app.modules.postsales import service
 from app.modules.postsales.exceptions import (
     PaymentPlanAmountMismatchError,
@@ -200,9 +201,38 @@ def test_demand_letter_and_commission_and_plan_amount_validation(
             ),
         )
 
+        # P0.3 behavior change: send_demand_letter now PREPARES the letter and
+        # opens a pending DEMAND_LETTER approval instead of stamping the sent
+        # timestamp immediately; a second admin's decision releases the send.
         updated = service.send_demand_letter(
             session, actor=admin, installment_id=plan.installments[0].id
         )
+        letter = updated.__dict__["demand_letter_document"]
+        assert letter.review_state == "PENDING_REVIEW"
+        assert updated.demand_letter_sent_at is None
+        approval = session.query(ApprovalRequest).filter_by(
+            reference_id=letter.id, request_type="DEMAND_LETTER"
+        ).one()
+        assert approval.status == ApprovalStatus.PENDING.value
+        assert approval.requested_by_id == admin.id
+
+        from app.modules.auth.security import hash_password as _hash  # noqa: F401
+
+        second_admin = User(
+            tenant_id=tenant.id, full_name="Approver",
+            email="approver@sales.example",
+            password_hash=hash_password(TEST_PASSWORD), role_id=admin.role_id,
+            is_active=True,
+        )
+        session.add(second_admin)
+        session.commit()
+        from app.modules.approvals import service as approvals_service
+
+        decided = approvals_service.decide(
+            session, actor=second_admin, request_id=approval.id, decision="APPROVED"
+        )
+        assert decided.status == ApprovalStatus.APPROVED.value
+        session.refresh(updated)
         assert updated.demand_letter_sent_at is not None
         assert updated.status == InstallmentStatus.DUE.value
 
