@@ -75,9 +75,10 @@ export function EditUserModal({
       };
 
       if (!isSelf) {
-        const assignment: RoleAssignmentSelection = customRoleId
-          ? { kind: "custom", customRoleId }
-          : { kind: "builtin", role };
+        const assignment: RoleAssignmentSelection = {
+          role,
+          customRoleId,
+        };
         Object.assign(
           payload,
           updateRoleAssignmentFields(assignment, {
@@ -211,9 +212,9 @@ export function EditUserModal({
                 <button
                   key={r.value}
                   type="button"
-                  onClick={() => { setRole(r.value); setCustomRoleId(null); }}
+                  onClick={() => setRole(r.value)}
                   className={`flex flex-col items-start rounded-xl border p-2.5 text-left transition-all ${
-                    customRoleId === null && role === r.value
+                    role === r.value
                       ? "border-charcoal bg-charcoal/5 ring-1 ring-charcoal"
                       : "border-charcoal/15 bg-white hover:border-charcoal/30"
                   }`}
@@ -239,7 +240,7 @@ export function EditUserModal({
                   disabled={customRolesQuery.isLoading}
                   className="h-10 rounded-xl border border-charcoal/15 bg-white px-3 text-sm text-charcoal focus:border-charcoal focus:outline-hidden focus:ring-2 focus:ring-charcoal/10 disabled:bg-charcoal/5"
                 >
-                  <option value="">None — use built-in role above</option>
+                  <option value="">None — base role permissions only</option>
                   {customRoleId && !customRoles.some((r) => r.id === customRoleId) && user.custom_role && (
                     <option value={customRoleId}>{user.custom_role.name} (current)</option>
                   )}
@@ -255,8 +256,8 @@ export function EditUserModal({
                     : customRolesQuery.isError
                       ? "Custom roles could not be loaded; the current selection is preserved."
                       : user.custom_role && !customRoleId
-                        ? `Clearing the custom role will revert this user to the selected built-in role (currently assigned: ${user.custom_role.name}).`
-                        : "Assigning a custom role keeps a Sales Executive base account and layers its permissions on top."}
+                        ? `Clearing ${user.custom_role.name} removes its extra permissions while keeping the selected base role.`
+                        : "Optional. The selected base role controls identity and scoping; the custom role adds its permissions on top."}
                 </p>
               </div>
             )}

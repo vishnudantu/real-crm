@@ -1,4 +1,4 @@
-export type AdminRoleName = "ADMIN" | "SALES_EXECUTIVE" | "MANAGER" | "BUYER";
+export type AdminRoleName = "ADMIN" | "MANAGER" | "SALES_EXECUTIVE" | "BUYER";
 
 export interface AdminRoleOption {
   value: AdminRoleName;
@@ -7,13 +7,14 @@ export interface AdminRoleOption {
 }
 
 /**
- * Single source of truth for assignable roles. There is no GET /roles endpoint
- * yet, so this mirrors backend/app/modules/users/models.py RoleName (which now
- * includes MANAGER). It should become API-driven once a roles endpoint exists.
+ * Single source of truth for assignable base roles, mirroring
+ * backend/app/modules/users/models.py RoleName. The built-in role remains the
+ * user's identity and scoping even when an optional custom role is attached;
+ * custom roles contribute only additional permissions.
  */
 export const ADMIN_ROLE_OPTIONS: readonly AdminRoleOption[] = [
   { value: "ADMIN", label: "Admin", description: "Full management" },
-  { value: "MANAGER", label: "Manager", description: "Inventory & team operations" },
+  { value: "MANAGER", label: "Manager", description: "Manages team operations" },
   { value: "SALES_EXECUTIVE", label: "Sales Exec", description: "Handles leads & visits" },
   { value: "BUYER", label: "Buyer", description: "Explores & books" },
 ];
@@ -101,40 +102,50 @@ export type UserFilterState = {
   pageSize: number;
 };
 
-/** Selection state shared by the create/edit user forms: built-in role or one custom role. */
-export type RoleAssignmentSelection =
-  | { kind: "builtin"; role: AdminRoleName }
-  | { kind: "custom"; customRoleId: string };
+/**
+ * Selection state shared by create/edit user forms: the base role is always
+ * chosen and an optional custom role can add grants without replacing it.
+ */
+export type RoleAssignmentSelection = {
+  role: AdminRoleName;
+  customRoleId: string | null;
+};
 
 /**
- * Build the role fields for UserCreateRequest. Both role and custom_role_id are
- * optional to the backend (role defaults to BUYER, custom overrides the base
- * role), so create can send either independently.
+ * Build role fields for UserCreateRequest. Create accepts role and
+ * custom_role_id together, so the selected base role is always retained.
  */
 export function createRoleAssignmentFields(
   selection: RoleAssignmentSelection,
 ): Pick<CreateUserPayload, "role" | "custom_role_id"> {
-  return selection.kind === "custom"
-    ? { role: "SALES_EXECUTIVE", custom_role_id: selection.customRoleId }
-    : { role: selection.role, custom_role_id: null };
+  return {
+    role: selection.role,
+    custom_role_id: selection.customRoleId,
+  };
 }
 
 /**
- * Build the role fields for UserUpdateRequest. The backend forbids sending both
- * role and custom_role_id (and forbids null), so an empty object means "leave
- * the current assignment unchanged" and exactly one key is sent on a change.
+ * Build role fields for UserUpdateRequest. The backend forbids sending both
+ * role and custom_role_id (and forbids null), so only the changed field is
+ * returned. A base-role change always sends role, which also clears an existing
+ * custom role; custom-role-only changes leave the current base role intact.
  */
 export function updateRoleAssignmentFields(
   selection: RoleAssignmentSelection,
   current: { roleName: string; customRoleId: string | null },
 ): Pick<UpdateUserPayload, "role" | "custom_role_id"> {
-  if (selection.kind === "custom") {
-    return current.customRoleId === selection.customRoleId
-      ? {}
-      : { custom_role_id: selection.customRoleId };
+  if (current.roleName !== selection.role) {
+    return { role: selection.role };
   }
-  return current.customRoleId === null && current.roleName === selection.role
-    ? {}
-    : { role: selection.role };
+  if (current.customRoleId !== selection.customRoleId) {
+    if (selection.customRoleId === null) {
+      // The current backend exposes custom-role removal through role updates.
+      // Re-sending the unchanged base role preserves the base role while
+      // clearing the custom assignment, unlike the old demotion semantics.
+      return { role: selection.role };
+    }
+    return { custom_role_id: selection.customRoleId };
+  }
+  return {};
 }
 

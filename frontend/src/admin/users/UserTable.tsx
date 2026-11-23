@@ -17,6 +17,13 @@ export function RoleBadge({ roleName }: { roleName: string }) {
           Administrator
         </span>
       );
+    case "MANAGER":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-violet-200/60 bg-violet-50 px-2.5 py-0.5 text-[11px] font-semibold text-violet-800">
+          <span className="size-1.5 rounded-full bg-violet-500" />
+          Manager
+        </span>
+      );
     case "SALES_EXECUTIVE":
       return (
         <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200/60 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700">
