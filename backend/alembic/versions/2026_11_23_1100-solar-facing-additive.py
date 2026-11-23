@@ -1,7 +1,7 @@
 """solar: project coordinates, tower orientations, unit facing_deg
 
-Revision ID: solar-facing-001
-Revises: b9c0d1e2f3a4
+Revision ID: c3a7f1d9e2b5
+Revises: a4d2c8e6f1b9
 Create Date: 2026-11-23 11:00:00
 
 Additive changes only:
@@ -23,8 +23,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "solar_facing_001"
-down_revision: Union[str, None] = "b9c0d1e2f3a4"
+revision: str = "c3a7f1d9e2b5"
+down_revision: Union[str, None] = "a4d2c8e6f1b9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
