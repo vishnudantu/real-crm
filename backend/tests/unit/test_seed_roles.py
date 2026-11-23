@@ -23,6 +23,6 @@ def test_seed_roles_is_idempotent(
         count = session.scalar(select(func.count()).select_from(Role))
 
     assert created_again == []
-    assert count == 3
+    assert count == len(RoleName)
     assert {role.name for role in roles} == {role.value for role in RoleName}
     assert all(role.description for role in roles)

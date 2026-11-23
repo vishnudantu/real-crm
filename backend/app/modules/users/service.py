@@ -27,6 +27,7 @@ from app.modules.users.schemas import (
 _ROLE_DESCRIPTIONS: dict[RoleName, str] = {
     RoleName.BUYER: "Buyer account",
     RoleName.SALES_EXECUTIVE: "Sales executive account",
+    RoleName.MANAGER: "Sales/inventory manager",
     RoleName.ADMIN: "Administrator account",
 }
 

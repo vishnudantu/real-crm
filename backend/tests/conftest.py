@@ -120,7 +120,7 @@ def override_db(
 def seeded_roles(
     test_session_factory: sessionmaker[Session],
 ) -> None:
-    """Seed the three built-in roles into the isolated test database."""
+    """Seed the built-in roles into the isolated test database."""
 
     with test_session_factory() as session:
         seed_roles(session)
