@@ -18,16 +18,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.projects.models import FactStatus, Project, ProjectFact
-from app.modules.projects.repository import get_project_by_id
+from app.modules.projects.models import FactStatus, ProjectFact
 from app.modules.solar.compass import bearing_to_compass
 from app.modules.solar.engine import sun_times
 from app.modules.solar.models import TowerOrientation
-from app.modules.solar.schemas import SunPathDay
 from app.modules.solar.service import (
     _get_project,
     _require_coordinates,
-    get_project_sun_path,
 )
 
 __all__ = [

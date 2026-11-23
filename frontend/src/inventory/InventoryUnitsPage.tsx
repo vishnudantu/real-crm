@@ -71,7 +71,6 @@ export function InventoryUnitsPage() {
   const units = unitsQuery.data?.items ?? [];
   const total = unitsQuery.data?.total ?? 0;
   const pages = unitsQuery.data?.pages ?? 0;
-  const selectedProject = projects.find((project) => project.id === projectId);
 
   const parsed = useMemo(() => bulkCsvParse(csvText, projectId), [csvText, projectId]);
   const selectedProject = projects.find((project) => project.id === projectId) ?? null;

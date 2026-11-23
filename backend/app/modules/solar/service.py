@@ -14,8 +14,7 @@ from app.modules.inventory.models import PropertyUnit
 from app.modules.inventory.repository import get_unit
 from app.modules.projects.models import Project
 from app.modules.projects.repository import get_project_by_id
-from app.modules.solar.compass import bearing_to_compass
-from app.modules.solar.engine import SunTimes, sun_times
+from app.modules.solar.engine import sun_times
 from app.modules.solar.models import TowerOrientation
 from app.modules.solar.schemas import (
     SunPathDay,
