@@ -173,7 +173,7 @@ def test_visit_thank_you_templates_declare_new_variables(
 def test_templates_fully_substitute_with_declared_variables() -> None:
     booking_entries = [
         (event, channel, name, body)
-        for event, channel, name, body in DEFAULT_LIFECYCLE_MESSAGES
+        for event, channel, name, body, _variables in DEFAULT_LIFECYCLE_MESSAGES
         if event == BOOKING_CONFIRMATION_EVENT
     ]
     assert len(booking_entries) == 2
@@ -198,7 +198,7 @@ def test_templates_fully_substitute_with_declared_variables() -> None:
 def test_thank_you_templates_substitute_visit_date_and_unit() -> None:
     thank_you_entries = [
         body
-        for event, _channel, _name, body in DEFAULT_LIFECYCLE_MESSAGES
+        for event, _channel, _name, body, _variables in DEFAULT_LIFECYCLE_MESSAGES
         if event == "site_visit.completed"
     ]
     assert len(thank_you_entries) == 2
@@ -307,21 +307,19 @@ def test_sale_booking_creation_from_hold_conversion_also_fires_event(
     test_session_factory: sessionmaker[Session],
 ) -> None:
     from app.modules.inventory import service as inventory_service
-    from app.modules.inventory.schemas import HoldCreateRequest, HoldConvertRequest
+    from app.modules.inventory.schemas import UnitCreateRequest
 
     with test_session_factory() as session:
         tenant, admin, project, lead = _fixture(session)
         seed_lifecycle_messages(session, tenant_id=tenant.id)
         unit = inventory_service.create_unit(
             session, actor=admin,
-            payload=inventory_service.UnitCreateRequest(
+            payload=UnitCreateRequest(
                 project_id=project.id, internal_code="B-1201", tower="B", floor="12",
-                configuration="3 BHK", carpet_area_sqft=1450,
+                configuration="3 BHK", carpet_area_sqft=1450, status="AVAILABLE",
             ),
         )
-        inventory_service.transition_unit(
-            session, actor=admin, unit_id=unit.id, to_status="AVAILABLE", reason="Launch",
-        )
+        assert unit.status == "AVAILABLE"
         hold = inventory_service.acquire_hold(
             session, actor=admin, unit_id=unit.id, lead_id=lead.id,
         )
@@ -335,6 +333,33 @@ def test_sale_booking_creation_from_hold_conversion_also_fires_event(
             )
         ).all()
         assert len(deliveries) == 2
+
+
+def test_confirmation_is_transactional_for_consent_but_not_opt_out(
+    test_session_factory: sessionmaker[Session],
+) -> None:
+    """Contract performance covers confirmation, not an explicit opt-out."""
+
+    provider = _RecordingProvider()
+    with test_session_factory() as session:
+        tenant, admin, _project, lead = _fixture(session)
+        lead.consent_to_contact = False  # not a full opt-out
+        seed_lifecycle_messages(session, tenant_id=tenant.id)
+        session.commit()
+        postsales_service.create_booking(
+            session, actor=admin,
+            payload=SaleBookingCreateRequest(
+                lead_id=lead.id, unit_number="B-1201", consideration_paise=1_50_00_00_00,
+            ),
+        )
+
+    with test_session_factory() as session:
+        counts = dispatcher.process_due_deliveries(
+            session, provider_factory=lambda name, settings: provider
+        )
+        assert counts["sent"] == 2
+        assert counts["suppressed"] == 0
+        assert len(provider.sent) == 2
 
 
 # ---------------------------------------------------------------------------
