@@ -118,6 +118,7 @@ import { ConversationsPage } from "./buyer/ConversationsPage";
 import { SiteVisitsPage } from "./buyer/SiteVisitsPage";
 import { ProjectInfoPage } from "./buyer/ProjectInfoPage";
 import { ProfilePage } from "./buyer/ProfilePage";
+import { BuyerDocumentsPage } from "./buyer/documents/BuyerDocumentsPage";
 import { SalesAuthGuard } from "./sales/SalesAuthGuard";
 import { SalesLayout } from "./sales/SalesLayout";
 import { SalesDashboardPage } from "./sales/SalesDashboardPage";
@@ -498,6 +499,7 @@ export default function App() {
               <Route path="conversations" element={<ConversationsPage />} />
               <Route path="visits" element={<SiteVisitsPage />} />
               <Route path="project" element={<ProjectInfoPage />} />
+              <Route path="documents" element={<BuyerDocumentsPage />} />
               <Route path="profile" element={<ProfilePage />} />
             </Route>
           </Route>
