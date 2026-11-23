@@ -3,6 +3,7 @@ import {
   BadgeCheck,
   Ban,
   BookCheck,
+  Building2,
   CircleAlert,
   CircleCheck,
   File,
@@ -75,6 +76,20 @@ export function StatusBadge({ status }: { status: string }) {
     >
       <StatusIcon status={status} className="size-3" />
       {statusLabel(status)}
+    </span>
+  );
+}
+
+/** Persistent project tag shown in the inventory page header so the user always
+ * knows which project's towers/units they are viewing, even after scrolling. */
+export function ProjectBadge({ name }: { name: string }) {
+  return (
+    <span
+      data-testid="inventory-project-badge"
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-forest/25 bg-forest/5 px-3 py-1 text-[11px] font-semibold text-forest"
+    >
+      <Building2 aria-hidden="true" className="size-3 shrink-0" />
+      <span className="truncate">{name}</span>
     </span>
   );
 }

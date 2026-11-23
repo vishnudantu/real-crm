@@ -3,6 +3,7 @@ import { clearSession, getSession } from "../auth/session";
 import type {
   AvailabilityResponse,
   BulkUnitCreateResponse,
+  FetchUnitsParams,
   HoldConvertResponse,
   HoldResponse,
   Unit,
@@ -13,25 +14,14 @@ import type {
   UnitStatus,
   UnitUpdateRequest,
 } from "./inventoryModel";
+import { buildUnitsQuery } from "./inventoryModel";
 
 function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return bearerRequest<T>(path, { getToken: getSession, clearToken: clearSession }, init);
 }
 
-export interface FetchUnitsParams {
-  projectId: string;
-  status?: UnitStatus | "ALL";
-  page?: number;
-  pageSize?: number;
-}
-
 export function fetchUnits(params: FetchUnitsParams): Promise<UnitListResponse> {
-  const query = new URLSearchParams();
-  query.set("project_id", params.projectId);
-  query.set("page", String(params.page ?? 1));
-  query.set("page_size", String(params.pageSize ?? 20));
-  if (params.status && params.status !== "ALL") query.set("status", params.status);
-  return request<UnitListResponse>(`/inventory/units?${query.toString()}`);
+  return request<UnitListResponse>(`/inventory/units?${buildUnitsQuery(params)}`);
 }
 
 export function fetchUnit(unitId: string): Promise<UnitDetail> {
@@ -39,7 +29,13 @@ export function fetchUnit(unitId: string): Promise<UnitDetail> {
 }
 
 export function fetchAvailability(projectId: string): Promise<AvailabilityResponse> {
-  return request<AvailabilityResponse>(`/inventory/availability/${projectId}`);
+  const id = projectId.trim();
+  if (!id) {
+    // The map page renders before a project is selected; an empty id would hit
+    // /availability/ (404). Resolve to empty counts instead of a failed call.
+    return Promise.resolve({ project_id: "", counts: {}, total: 0 });
+  }
+  return request<AvailabilityResponse>(`/inventory/availability/${id}`);
 }
 
 export function bulkCreateUnits(

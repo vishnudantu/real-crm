@@ -154,6 +154,27 @@ export interface AvailabilityResponse {
   total: number;
 }
 
+export interface FetchUnitsParams {
+  projectId: string;
+  status?: UnitStatus | "ALL";
+  page?: number;
+  pageSize?: number;
+}
+
+/** Build the /inventory/units query string, omitting an empty/whitespace
+ * `project_id`. FastAPI coerces `project_id=` (empty) to UUID and returns 422
+ * "Request validation failed"; omitting it lists the tenant's units instead.
+ * Pure helper so it is unit-testable without a DOM/fetch. */
+export function buildUnitsQuery(params: FetchUnitsParams): string {
+  const query = new URLSearchParams();
+  const projectId = params.projectId.trim();
+  if (projectId) query.set("project_id", projectId);
+  query.set("page", String(params.page ?? 1));
+  query.set("page_size", String(params.pageSize ?? 20));
+  if (params.status && params.status !== "ALL") query.set("status", params.status);
+  return query.toString();
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
