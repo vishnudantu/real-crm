@@ -1,4 +1,4 @@
-"""Idempotently create the BUYER, SALES_EXECUTIVE, and ADMIN roles."""
+"""Idempotently create all built-in application roles."""
 
 from __future__ import annotations
 

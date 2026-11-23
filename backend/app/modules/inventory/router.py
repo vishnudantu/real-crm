@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.modules.approvals.schemas import ApprovalRequestResponse
 from app.modules.approvals.service import request_unit_discount
-from app.modules.auth.dependencies import AdminUser, CurrentUser, require_roles
+from app.modules.auth.dependencies import CurrentUser, ManagerUser, require_roles
 from app.modules.inventory import repository, service
 from app.modules.inventory.exceptions import UnitNotFoundError
 from app.modules.inventory.schemas import (
@@ -37,9 +37,15 @@ from app.modules.users.models import RoleName, User
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
+# Permission boundary: MANAGER extends ADMIN/SALES_EXECUTIVE staff access only
+# for unit administration and hold workflows here. Project/fact administration,
+# unrelated sales workflows, operator impersonation, billing, tenant branding,
+# user role management, and feature flags remain on their existing dependencies.
+InventoryManager = ManagerUser
+
 HoldWriter = Annotated[
     User,
-    Depends(require_roles(RoleName.ADMIN, RoleName.SALES_EXECUTIVE)),
+    Depends(require_roles(RoleName.ADMIN, RoleName.MANAGER, RoleName.SALES_EXECUTIVE)),
 ]
 
 DiscountRequester = Annotated[
@@ -51,20 +57,20 @@ DiscountRequester = Annotated[
 @router.post("/units", response_model=UnitResponse, status_code=status.HTTP_201_CREATED)
 def create_unit_endpoint(
     payload: UnitCreateRequest,
-    admin: AdminUser,
+    actor: InventoryManager,
     db: Annotated[Session, Depends(get_db)],
 ):
-    return service.create_unit(db, actor=admin, payload=payload)
+    return service.create_unit(db, actor=actor, payload=payload)
 
 
 @router.post("/units/bulk", response_model=BulkUnitCreateResponse)
 def bulk_create_units_endpoint(
     payload: BulkUnitCreateRequest,
-    admin: AdminUser,
+    actor: InventoryManager,
     db: Annotated[Session, Depends(get_db)],
     dry_run: Annotated[bool, Query()] = False,
 ):
-    results = service.bulk_create_units(db, actor=admin, rows=payload.rows, dry_run=dry_run)
+    results = service.bulk_create_units(db, actor=actor, rows=payload.rows, dry_run=dry_run)
     return BulkUnitCreateResponse(
         dry_run=dry_run,
         results=results,
@@ -118,31 +124,31 @@ def get_unit_endpoint(
 def update_unit_endpoint(
     unit_id: UUID,
     payload: UnitUpdateRequest,
-    admin: AdminUser,
+    actor: InventoryManager,
     db: Annotated[Session, Depends(get_db)],
 ):
-    return service.update_unit(db, actor=admin, unit_id=unit_id, payload=payload)
+    return service.update_unit(db, actor=actor, unit_id=unit_id, payload=payload)
 
 
 @router.delete("/units/{unit_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_unit_endpoint(
     unit_id: UUID,
-    admin: AdminUser,
+    actor: InventoryManager,
     db: Annotated[Session, Depends(get_db)],
 ) -> None:
-    service.delete_unit(db, actor=admin, unit_id=unit_id)
+    service.delete_unit(db, actor=actor, unit_id=unit_id)
 
 
 @router.patch("/units/{unit_id}/status", response_model=UnitResponse)
 def transition_unit_endpoint(
     unit_id: UUID,
     payload: UnitStatusUpdateRequest,
-    admin: AdminUser,
+    actor: InventoryManager,
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.transition_unit(
         db,
-        actor=admin,
+        actor=actor,
         unit_id=unit_id,
         to_status=payload.to_status,
         reason=payload.reason,

@@ -844,7 +844,12 @@ docker-compose.yml          PostgreSQL 16 with a persistent volume
 - Access tokens only: no server-side logout or revocation list. *(Addressed: login now issues a refresh token; `/auth/logout` and `/auth/revoke-all` revoke refresh tokens server-side, and revoked access-token JTIs are rejected before expiry.)*
 - No email verification or password reset yet. Public users remain
   `is_verified=false`.
-- The three roles are fixed for the MVP; role CRUD is not exposed.
+- The roles are fixed for the MVP; role CRUD is not exposed. MANAGER is a
+  scoped inventory role: unit administration, status transitions, and holds
+  (including managing another staff member's hold, like ADMIN). Other modules,
+  including project/fact administration, retain their existing role checks.
+  Operator impersonation, billing, tenant branding, user/role management, and
+  feature flags remain ADMIN-only; SALES_EXECUTIVE and BUYER are unchanged.
 - Account deletion is not implemented; deactivation is used instead.
 - Project/fact deletion is not implemented; facts are rejected/unpublished
   instead of deleted. *(Addressed: administrators can now hard-delete projects and facts via `DELETE /api/v1/projects/{project_id}` and `DELETE /api/v1/facts/{fact_id}`. Deletion is refused with `409` while dependent records exist.)*

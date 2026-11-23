@@ -95,3 +95,6 @@ def require_roles(*roles: RoleName) -> Callable[..., User]:
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 AdminUser = Annotated[User, Depends(require_roles(RoleName.ADMIN))]
+ManagerUser = Annotated[
+    User, Depends(require_roles(RoleName.ADMIN, RoleName.MANAGER))
+]

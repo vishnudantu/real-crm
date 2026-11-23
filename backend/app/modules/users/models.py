@@ -18,6 +18,7 @@ class RoleName(StrEnum):
 
     BUYER = "BUYER"
     SALES_EXECUTIVE = "SALES_EXECUTIVE"
+    MANAGER = "MANAGER"
     ADMIN = "ADMIN"
 
 

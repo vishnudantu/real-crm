@@ -134,18 +134,22 @@ def _as_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
-def _resolve_admin(session: Session, actor) -> bool:
-    """Admin check that works for ORM users (possibly expired after commit)
-    and for detached test principals carrying only id/tenant_id."""
+def _resolve_inventory_manager(session: Session, actor) -> bool:
+    """Check manager access for ORM users and detached test principals.
 
+    Managers receive inventory rights, not blanket administrator privileges.
+    This check is used only to let them manage another user's hold.
+    """
+
+    allowed = {RoleName.ADMIN.value, RoleName.MANAGER.value}
     role = getattr(actor, "role", None)
     if role is not None:
-        return getattr(role, "name", None) == RoleName.ADMIN.value
+        return getattr(role, "name", None) in allowed
     if getattr(actor, "role_id", None) is None:
         return False
     from app.modules.users.models import Role
 
-    return session.get(Role, actor.role_id).name == RoleName.ADMIN.value
+    return session.get(Role, actor.role_id).name in allowed
 
 
 def _source_value(source: UnitEventSource | str) -> UnitEventSource:
@@ -170,8 +174,8 @@ def _get_hold_or_404(session: Session, hold_id: UUID, *, tenant_id: UUID) -> Uni
     return hold
 
 
-def _require_owner_or_admin(session: Session, actor, hold: UnitHold) -> None:
-    if not _resolve_admin(session, actor) and hold.owner_user_id != actor.id:
+def _require_owner_or_inventory_manager(session: Session, actor, hold: UnitHold) -> None:
+    if not _resolve_inventory_manager(session, actor) and hold.owner_user_id != actor.id:
         raise HoldNotOwnedByActorError()
 
 
@@ -522,7 +526,7 @@ def extend_hold(
         hold = _get_hold_or_404(session, hold_id, tenant_id=actor.tenant_id)
         repository.lock_unit_for_hold(session, tenant_id=actor.tenant_id, unit_id=hold.unit_id)
         session.refresh(hold)
-        _require_owner_or_admin(session, actor, hold)
+        _require_owner_or_inventory_manager(session, actor, hold)
         if hold.state != HoldState.ACTIVE.value or _as_utc(hold.expires_at) <= _now():
             raise HoldNotActiveError()
         if hold.extension_count >= MAX_HOLD_EXTENSIONS:
@@ -583,7 +587,7 @@ def release_hold(
         hold = _get_hold_or_404(session, hold_id, tenant_id=actor.tenant_id)
         repository.lock_unit_for_hold(session, tenant_id=actor.tenant_id, unit_id=hold.unit_id)
         session.refresh(hold)
-        _require_owner_or_admin(session, actor, hold)
+        _require_owner_or_inventory_manager(session, actor, hold)
         if hold.state != HoldState.ACTIVE.value:
             raise HoldNotActiveError()
         _release(
@@ -653,7 +657,7 @@ def reserve_unit(session: Session, *, actor, hold_id: UUID) -> PropertyUnit:
         hold = _get_hold_or_404(session, hold_id, tenant_id=actor.tenant_id)
         repository.lock_unit_for_hold(session, tenant_id=actor.tenant_id, unit_id=hold.unit_id)
         session.refresh(hold)
-        _require_owner_or_admin(session, actor, hold)
+        _require_owner_or_inventory_manager(session, actor, hold)
         if hold.state != HoldState.ACTIVE.value or _as_utc(hold.expires_at) <= _now():
             raise HoldNotActiveError()
         unit = _get_unit_or_404(session, hold.unit_id, tenant_id=actor.tenant_id)
@@ -700,7 +704,7 @@ def convert_to_booking(
         hold = _get_hold_or_404(session, hold_id, tenant_id=actor.tenant_id)
         repository.lock_unit_for_hold(session, tenant_id=actor.tenant_id, unit_id=hold.unit_id)
         session.refresh(hold)
-        _require_owner_or_admin(session, actor, hold)
+        _require_owner_or_inventory_manager(session, actor, hold)
         if hold.state != HoldState.ACTIVE.value or _as_utc(hold.expires_at) <= _now():
             raise HoldNotActiveError()
         if hold.lead_id is None:
