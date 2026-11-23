@@ -69,9 +69,10 @@ export function CreateUserModal({
 
     setLoading(true);
     try {
-      const assignment: RoleAssignmentSelection = customRoleId
-        ? { kind: "custom", customRoleId }
-        : { kind: "builtin", role };
+      const assignment: RoleAssignmentSelection = {
+        role,
+        customRoleId,
+      };
       const payload: CreateUserPayload = {
         full_name: trimmedName,
         email: trimmedEmail,
@@ -236,9 +237,9 @@ export function CreateUserModal({
                 <button
                   key={r.value}
                   type="button"
-                  onClick={() => { setRole(r.value); setCustomRoleId(null); }}
+                  onClick={() => setRole(r.value)}
                   className={`flex flex-col items-start rounded-xl border p-2.5 text-left transition-all ${
-                    customRoleId === null && role === r.value
+                    role === r.value
                       ? "border-charcoal bg-charcoal/5 ring-1 ring-charcoal"
                       : "border-charcoal/15 bg-white hover:border-charcoal/30"
                   }`}
@@ -267,7 +268,7 @@ export function CreateUserModal({
               className="h-10 rounded-xl border border-charcoal/15 bg-white px-3 text-sm text-charcoal focus:border-charcoal focus:outline-hidden focus:ring-2 focus:ring-charcoal/10 disabled:bg-charcoal/5"
               disabled={customRolesQuery.isLoading || customRoles.length === 0}
             >
-              <option value="">None — use built-in role above</option>
+              <option value="">None — base role permissions only</option>
               {customRoles.map((customRole) => (
                 <option key={customRole.id} value={customRole.id}>
                   {customRole.name} ({customRole.permissions.length} permissions)
@@ -281,7 +282,7 @@ export function CreateUserModal({
                   ? "Custom roles could not be loaded; only built-in roles are available."
                   : customRoles.length === 0
                     ? "No custom roles defined yet. Admins can create them under Settings → Roles."
-                    : "Assigning a custom role keeps a Sales Executive base account and layers its permissions on top."}
+                    : "Optional. The selected base role controls identity and scoping; the custom role adds its permissions on top."}
             </p>
           </div>
 

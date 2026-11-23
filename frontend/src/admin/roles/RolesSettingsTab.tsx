@@ -270,7 +270,7 @@ export function RolesSettingsTab() {
             <KeyRound aria-hidden="true" className="size-8 text-charcoal/30" />
             <p className="text-sm font-semibold text-charcoal">Design a custom role</p>
             <p className="max-w-sm text-xs leading-relaxed text-charcoal/55">
-              Select a role from the list to edit it, or press “New” to build one from the permission checklist. Users assigned a custom role keep a sales-executive base account with the extra grants layered on top.
+              Select a role from the list to edit it, or press “New” to build one from the permission checklist. Users keep their built-in base role for identity and scoping; the custom role adds the selected grants on top.
             </p>
           </div>
         ) : (
