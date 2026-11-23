@@ -135,3 +135,16 @@ test("maps settings path segments to tabs without accepting unknown paths", () =
   assert.equal(resolveSettingsTab("/admin/settings/widget"), "widget");
   assert.equal(resolveSettingsTab("/admin/settings/not-a-tab"), "branding");
 });
+
+test("always exposes the Roles settings child and resolves its tab", () => {
+  for (const features of [{}, allFeatures]) {
+    const settings = buildAdminNav(features)
+      .flatMap((group) => group.items)
+      .find((item) => item.to === "/admin/settings");
+    assert.ok(
+      settings?.children?.some((child) => child.to === "/admin/settings/roles"),
+      "Roles child should be present",
+    );
+  }
+  assert.equal(resolveSettingsTab("/admin/settings/roles"), "roles");
+});

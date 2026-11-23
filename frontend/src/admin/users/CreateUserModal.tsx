@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Eye,
   EyeOff,
@@ -6,9 +7,10 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import type { AdminRoleName, CreateUserPayload, UserItem } from "../adminModel";
-import { ADMIN_ROLE_OPTIONS } from "../adminModel";
+import type { AdminRoleName, CreateUserPayload, RoleAssignmentSelection, UserItem } from "../adminModel";
+import { ADMIN_ROLE_OPTIONS, createRoleAssignmentFields } from "../adminModel";
 import { createUser } from "../api";
+import { fetchCustomRoles } from "../roles/roleApi";
 
 type CreateUserModalProps = {
   isOpen: boolean;
@@ -27,10 +29,19 @@ export function CreateUserModal({
   const [showPassword, setShowPassword] = useState(false);
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<AdminRoleName>("SALES_EXECUTIVE");
+  const [customRoleId, setCustomRoleId] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(true);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const customRolesQuery = useQuery({
+    queryKey: ["admin", "roles", "custom"],
+    queryFn: fetchCustomRoles,
+    enabled: isOpen,
+    staleTime: 60_000,
+  });
+  const customRoles = customRolesQuery.data?.items ?? [];
 
   if (!isOpen) return null;
 
@@ -58,12 +69,15 @@ export function CreateUserModal({
 
     setLoading(true);
     try {
+      const assignment: RoleAssignmentSelection = customRoleId
+        ? { kind: "custom", customRoleId }
+        : { kind: "builtin", role };
       const payload: CreateUserPayload = {
         full_name: trimmedName,
         email: trimmedEmail,
         password,
         phone: phone.trim() || null,
-        role,
+        ...createRoleAssignmentFields(assignment),
         is_active: isActive,
       };
 
@@ -222,9 +236,9 @@ export function CreateUserModal({
                 <button
                   key={r.value}
                   type="button"
-                  onClick={() => setRole(r.value)}
+                  onClick={() => { setRole(r.value); setCustomRoleId(null); }}
                   className={`flex flex-col items-start rounded-xl border p-2.5 text-left transition-all ${
-                    role === r.value
+                    customRoleId === null && role === r.value
                       ? "border-charcoal bg-charcoal/5 ring-1 ring-charcoal"
                       : "border-charcoal/15 bg-white hover:border-charcoal/30"
                   }`}
@@ -236,6 +250,39 @@ export function CreateUserModal({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Custom Role (optional) */}
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="create-custom-role"
+              className="text-xs font-semibold text-charcoal"
+            >
+              Custom Role (Optional)
+            </label>
+            <select
+              id="create-custom-role"
+              value={customRoleId ?? ""}
+              onChange={(e) => setCustomRoleId(e.target.value || null)}
+              className="h-10 rounded-xl border border-charcoal/15 bg-white px-3 text-sm text-charcoal focus:border-charcoal focus:outline-hidden focus:ring-2 focus:ring-charcoal/10 disabled:bg-charcoal/5"
+              disabled={customRolesQuery.isLoading || customRoles.length === 0}
+            >
+              <option value="">None — use built-in role above</option>
+              {customRoles.map((customRole) => (
+                <option key={customRole.id} value={customRole.id}>
+                  {customRole.name} ({customRole.permissions.length} permissions)
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-charcoal/50">
+              {customRolesQuery.isLoading
+                ? "Loading custom roles…"
+                : customRolesQuery.isError
+                  ? "Custom roles could not be loaded; only built-in roles are available."
+                  : customRoles.length === 0
+                    ? "No custom roles defined yet. Admins can create them under Settings → Roles."
+                    : "Assigning a custom role keeps a Sales Executive base account and layers its permissions on top."}
+            </p>
           </div>
 
           {/* Active Status Checkbox */}

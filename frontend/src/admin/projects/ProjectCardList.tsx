@@ -7,7 +7,7 @@ import {
   Shield,
 } from "lucide-react";
 import type { ProjectItem } from "../projectModel";
-import { ProjectStatusBadge } from "./ProjectTable";
+import { ProjectStatusBadge, ProjectTypeBadge } from "./ProjectTable";
 
 type ProjectCardListProps = {
   projects: ProjectItem[];
@@ -41,6 +41,7 @@ export function ProjectCardList({
                 <div>
                   <h3 className="font-semibold text-charcoal text-sm">
                     {p.name}
+                    <ProjectTypeBadge projectType={p.project_type} />
                   </h3>
                   <p className="text-xs text-charcoal/50">/{p.slug}</p>
                 </div>

@@ -361,6 +361,7 @@ export function InventoryMapPage() {
       {selectedUnitId && (
         <UnitDetailDrawer
           unitId={selectedUnitId}
+          projectType={projects.find((project) => project.id === projectId)?.project_type}
           onClose={() => setSelectedUnitId(null)}
           onChanged={(message) => setNotice(message)}
         />

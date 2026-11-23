@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Building2, LoaderCircle, Plus, X } from "lucide-react";
-import type { AdminProjectStatus, CreateProjectPayload, ProjectItem } from "../projectModel";
+import type { AdminProjectStatus, CreateProjectPayload, ProjectItem, ProjectType } from "../projectModel";
+import { PROJECT_TYPE_LABELS, PROJECT_TYPES } from "../projectModel";
 import { createProject } from "../api";
+import { errorMessage } from "../../shared/apiRequest";
 
 type CreateProjectModalProps = {
   isOpen: boolean;
@@ -19,6 +21,7 @@ export function CreateProjectModal({
   const [location, setLocation] = useState("");
   const [reraNumber, setReraNumber] = useState("");
   const [description, setDescription] = useState("");
+  const [projectType, setProjectType] = useState<ProjectType | "">("");
   const [status, setStatus] = useState<AdminProjectStatus>("ACTIVE");
 
   const [loading, setLoading] = useState(false);
@@ -51,14 +54,15 @@ export function CreateProjectModal({
         location: trimmedLocation,
         rera_number: reraNumber.trim() || null,
         description: description.trim() || null,
+        project_type: projectType || null,
         status,
       };
 
       const created = await createProject(payload);
       onSuccess(created);
       onClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to create project.");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Failed to create project."));
     } finally {
       setLoading(false);
     }
@@ -198,6 +202,38 @@ export function CreateProjectModal({
               placeholder="Highlight project positioning, key configurations, and standout lifestyle amenities…"
               className="rounded-xl border border-charcoal/15 bg-white p-3 text-sm text-charcoal placeholder:text-charcoal/40 focus:border-charcoal focus:outline-hidden focus:ring-2 focus:ring-charcoal/10"
             />
+          </div>
+
+          {/* Project Type */}
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="create-ptype"
+              className="text-xs font-semibold text-charcoal"
+            >
+              Project Type (Optional)
+            </label>
+            <select
+              id="create-ptype"
+              value={projectType}
+              onChange={(e) => setProjectType(e.target.value as ProjectType | "")}
+              className="h-10 rounded-xl border border-charcoal/15 bg-white px-3 text-sm text-charcoal focus:border-charcoal focus:outline-hidden focus:ring-2 focus:ring-charcoal/10"
+            >
+              <option value="">Not specified — legacy inventory rules apply</option>
+              {PROJECT_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {PROJECT_TYPE_LABELS[type]}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-charcoal/50">
+              {projectType === "APARTMENT" || projectType === "COMMERCIAL"
+                ? "Unit import and creation will require tower and floor for every unit."
+                : projectType === "VILLA" || projectType === "PLOT"
+                  ? "Unit import and creation will require a plot number; tower and numbered floors are not allowed."
+                  : projectType === "MIXED"
+                    ? "Units may use either tower/floor or plot numbering; no per-type restrictions apply."
+                    : "Choose a type to enable inventory field validation for this project's units."}
+            </p>
           </div>
 
           {/* Initial Status */}
