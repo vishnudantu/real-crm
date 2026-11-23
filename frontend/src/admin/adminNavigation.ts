@@ -65,6 +65,7 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
     items: [
       { label: "Approvals", shortLabel: "Approvals", to: "/admin/approvals" },
       { label: "Service Desk", shortLabel: "Service Desk", to: "/admin/service-desk" },
+      { label: "Knowledge Base", shortLabel: "Knowledge", to: "/admin/service-desk/knowledge" },
       { label: "Call Intelligence", shortLabel: "Call Intel", to: "/admin/call-intelligence" },
     ],
   },

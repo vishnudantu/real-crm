@@ -8,6 +8,7 @@ import {
   Calendar,
   Building2,
   FolderLock,
+  LifeBuoy,
   User,
   LogOut,
   Bell,
@@ -40,6 +41,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "My Site Visits", to: "/buyer/visits", icon: Calendar },
   { label: "Project Information", to: "/buyer/project", icon: Building2 },
   { label: "My Documents", to: "/buyer/documents", icon: FolderLock },
+  { label: "Help Center", to: "/buyer/help", icon: LifeBuoy },
   { label: "My Profile", to: "/buyer/profile", icon: User },
 ];
 

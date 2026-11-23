@@ -30,6 +30,7 @@ export interface TicketItem {
   sla_due_at: string;
   first_response_at: string | null;
   resolved_at: string | null;
+  closed_at: string | null;
   resolution_note: string | null;
   created_at: string;
   updated_at: string;
@@ -44,8 +45,20 @@ export interface TicketCommentItem {
   created_at: string;
 }
 
+export type KbArticleStatus = "DRAFT" | "PUBLISHED";
+
+export interface TicketSatisfaction {
+  id: string;
+  ticket_id: string;
+  rating: number | null;
+  feedback: string | null;
+  created_at: string;
+  responded_at: string | null;
+}
+
 export interface TicketDetail extends TicketItem {
   comments: TicketCommentItem[];
+  satisfaction: TicketSatisfaction | null;
 }
 
 export interface TicketListResponse {
@@ -219,3 +232,159 @@ export function validateCommentBody(body: string): string | null {
   }
   return null;
 }
+
+// --------------------------------------------------------------------------- //
+// Knowledge base + CSAT (mirrors backend service_desk schemas)
+// --------------------------------------------------------------------------- //
+
+export interface KbArticleItem {
+  id: string;
+  title: string;
+  slug: string;
+  body_markdown: string;
+  category: string;
+  status: KbArticleStatus;
+  published_at: string | null;
+  author_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KbArticleListResponse {
+  items: KbArticleItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface KbArticleCreatePayload {
+  title: string;
+  slug?: string | null;
+  body_markdown: string;
+  category: string;
+}
+
+export interface AgentSuggestion {
+  article_id: string;
+  title: string;
+  slug: string;
+  category: string;
+  score: number;
+}
+
+export interface CsatPeriodStat {
+  period: string;
+  surveys: number;
+  rated: number;
+  average_rating: number | null;
+}
+
+export interface CsatTrendPoint {
+  period: string;
+  opened: number;
+  closed: number;
+}
+
+export interface CsatStats {
+  period: string;
+  surveys: number;
+  rated: number;
+  average_rating: number | null;
+  response_rate: number | null;
+  rating_histogram: Record<string, number>;
+  unresolved_tickets: number;
+  periods: CsatPeriodStat[];
+  ticket_trends: CsatTrendPoint[];
+}
+
+export const MAX_KB_TITLE_LENGTH = 255;
+export const MAX_KB_BODY_LENGTH = 100000;
+export const MAX_KB_CATEGORY_LENGTH = 64;
+export const MAX_CSAT_FEEDBACK_LENGTH = 2000;
+
+export interface KbArticleFormState {
+  title: string;
+  slug: string;
+  category: string;
+  body_markdown: string;
+}
+
+export type KbArticleFormErrors = Partial<Record<keyof KbArticleFormState, string>>;
+
+export function emptyKbArticleForm(): KbArticleFormState {
+  return { title: "", slug: "", category: "", body_markdown: "" };
+}
+
+/** Client mirror of KbArticleCreateRequest constraints (server is authority). */
+export function validateKbArticleForm(form: KbArticleFormState): KbArticleFormErrors {
+  const errors: KbArticleFormErrors = {};
+  const title = form.title.trim();
+  const category = form.category.trim();
+  const body = form.body_markdown.trim();
+  if (!title) errors.title = "A title is required.";
+  else if (title.length > MAX_KB_TITLE_LENGTH) {
+    errors.title = `At most ${MAX_KB_TITLE_LENGTH} characters.`;
+  }
+  if (!category) errors.category = "Pick or type a category.";
+  else if (category.length > MAX_KB_CATEGORY_LENGTH) {
+    errors.category = `At most ${MAX_KB_CATEGORY_LENGTH} characters.`;
+  }
+  if (!body) errors.body_markdown = "Write the article body in markdown.";
+  else if (body.length > MAX_KB_BODY_LENGTH) {
+    errors.body_markdown = `At most ${MAX_KB_BODY_LENGTH} characters.`;
+  }
+  const slug = form.slug.trim();
+  if (slug && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    errors.slug = "Lowercase letters, digits and single hyphens only.";
+  }
+  return errors;
+}
+
+/** Derive the backend slug style from a title (client preview only). */
+export function slugifyArticleTitle(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/g, "");
+  return slug || "article";
+}
+
+export function kbArticleStatusLabel(status: KbArticleStatus | string): string {
+  return status === "PUBLISHED" ? "Published" : "Draft";
+}
+
+export function kbArticleStatusTone(status: KbArticleStatus | string): string {
+  return status === "PUBLISHED"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+    : "border-amber-200 bg-amber-50 text-amber-800";
+}
+
+/** 1..5 CSAT stars; null/undefined renders as "not rated". */
+export function csatStars(rating: number | null | undefined): string {
+  if (rating === null || rating === undefined || rating < 1 || rating > 5) return "—";
+  return `${"★".repeat(rating)}${"☆".repeat(5 - rating)}`;
+}
+
+/** Compact average label for the board card ("4.2 / 5" or "No ratings yet"). */
+export function csatAverageLabel(average: number | null | undefined): string {
+  if (average === null || average === undefined) return "No ratings yet";
+  return `${average.toFixed(1)} / 5`;
+}
+
+/** Format the backend response ratio (0..1) as a percentage string. */
+export function csatResponseRateLabel(rate: number | null | undefined): string {
+  if (rate === null || rate === undefined) return "—";
+  return `${Math.round(rate * 100)}%`;
+}
+
+export const CSAT_PERIODS: readonly { value: "30d" | "90d" | "365d"; label: string }[] = [
+  { value: "30d", label: "Last 30 days" },
+  { value: "90d", label: "Last 90 days" },
+  { value: "365d", label: "Last 12 months" },
+];
+
+export type CsatPeriod = (typeof CSAT_PERIODS)[number]["value"];
