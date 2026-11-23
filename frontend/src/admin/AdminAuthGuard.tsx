@@ -11,6 +11,7 @@ import type { UserItem } from "./adminModel";
 type AdminContextType = {
   user: UserItem;
   refetchUser: () => Promise<void>;
+  staffOnly?: boolean;
 };
 
 const AdminContext = createContext<AdminContextType | null>(null);
@@ -32,7 +33,7 @@ export function useOptionalAdminUser(): AdminContextType | null {
   return useContext(AdminContext);
 }
 
-export function AdminAuthGuard() {
+export function AdminAuthGuard({ staffOnly = false }: { staffOnly?: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { branding } = useTenant();
@@ -53,11 +54,9 @@ export function AdminAuthGuard() {
       const profile = await fetchAdminProfile();
       const role = roleFromName(profile.role.name);
 
-      if (
-        role !== "ADMIN" ||
-        !profileMatchesTenant(profile.tenant_id, branding.id)
-      ) {
-        if (role && role !== "ADMIN") {
+      const permitted = role === "ADMIN" || (staffOnly && role === "MANAGER");
+      if (!permitted || !profileMatchesTenant(profile.tenant_id, branding.id)) {
+        if (role && !permitted) {
           navigate(homeForRole(role), { replace: true });
         } else {
           clearSession();
@@ -76,12 +75,12 @@ export function AdminAuthGuard() {
 
   useEffect(() => {
     void loadProfile();
-  }, [branding.id]);
+  }, [branding.id, staffOnly]);
 
-  const refetchUser = useCallback(async () => loadProfile(), [branding.id]);
+  const refetchUser = useCallback(async () => loadProfile(), [branding.id, staffOnly]);
   const contextValue = useMemo(
-    () => ({ user: user as UserItem, refetchUser }),
-    [user, refetchUser],
+    () => ({ user: user as UserItem, refetchUser, staffOnly }),
+    [user, refetchUser, staffOnly],
   );
 
   if (status === "loading") {

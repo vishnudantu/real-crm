@@ -30,6 +30,7 @@ from app.modules.dashboard import models as dashboard_models  # noqa: F401
 from app.modules.documents import models as documents_models  # noqa: F401
 from app.modules.follow_ups import models as follow_ups_models  # noqa: F401
 from app.modules.handoffs import models as handoffs_models  # noqa: F401
+from app.modules.handover import models as handover_models  # noqa: F401
 from app.modules.integrations import models as integrations_models  # noqa: F401
 from app.modules.inventory import models as inventory_models  # noqa: F401
 from app.modules.leads import models as leads_models  # noqa: F401

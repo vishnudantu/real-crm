@@ -51,6 +51,7 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
       { label: "Projects & Fact Sheets", shortLabel: "Projects", to: "/admin/projects" },
       { label: "Site Visits & Slots", shortLabel: "Visits", to: "/admin/visits" },
       { label: "Construction Progress", shortLabel: "Construction", to: "/admin/construction" },
+      { label: "Handover & Possession", shortLabel: "Handover", to: "/admin/handover" },
     ],
   },
   {
@@ -142,10 +143,16 @@ function visibleItem(
 
 export function buildAdminNav(
   features: Readonly<Record<string, boolean>>,
+  role = "ADMIN",
+  staffOnly = false,
 ): AdminNavigationGroup[] {
+  if (staffOnly) {
+    return [{ label: "Property", items: [{ label: "Handover & Possession", shortLabel: "Handover", to: "/admin/handover" }] }];
+  }
   return NAVIGATION_DEFINITIONS.map((group) => ({
     label: group.label,
     items: group.items
+      .filter((item) => item.to !== "/admin/handover" || role === "ADMIN" || role === "MANAGER")
       .map((item) => visibleItem(item, features))
       .filter((item): item is AdminNavigationItem => item !== null),
   })).filter((group) => group.items.length > 0);
@@ -153,8 +160,11 @@ export function buildAdminNav(
 
 export function buildAdminMobileNav(
   features: Readonly<Record<string, boolean>>,
+  role = "ADMIN",
+  staffOnly = false,
 ): AdminNavigationItem[] {
-  const items = buildAdminNav(features).flatMap((group) => group.items);
+  const items = buildAdminNav(features, role, staffOnly).flatMap((group) => group.items);
+  if (staffOnly) return items;
   const inbox = items.find((item) => item.to === "/admin/inbox");
   const destinations = inbox
     ? ["/admin", "/admin/inbox", "/admin/projects", "/admin/visits", "/admin/account"]

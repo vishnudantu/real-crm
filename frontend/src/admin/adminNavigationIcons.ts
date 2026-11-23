@@ -39,6 +39,7 @@ const ICONS_BY_PATH: Readonly<Record<string, LucideIcon>> = {
   "/admin/inventory/units": ListChecks,
   "/admin/visits": CalendarDays,
   "/admin/construction": HardHat,
+  "/admin/handover": KeyRound,
   "/admin/approvals": CheckSquare,
   "/admin/service-desk": LifeBuoy,
   "/admin/reconciliation": Landmark,
