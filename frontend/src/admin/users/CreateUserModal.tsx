@@ -7,6 +7,7 @@ import {
   X,
 } from "lucide-react";
 import type { AdminRoleName, CreateUserPayload, UserItem } from "../adminModel";
+import { ADMIN_ROLE_OPTIONS } from "../adminModel";
 import { createUser } from "../api";
 
 type CreateUserModalProps = {
@@ -69,8 +70,8 @@ export function CreateUserModal({
       const newUser = await createUser(payload);
       onSuccess(newUser);
       onClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to create user account.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create user account.");
     } finally {
       setLoading(false);
     }
@@ -216,30 +217,14 @@ export function CreateUserModal({
             <label className="text-xs font-semibold text-charcoal">
               Account Role <span className="text-rose-500">*</span>
             </label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                {
-                  id: "SALES_EXECUTIVE" as AdminRoleName,
-                  label: "Sales Exec",
-                  desc: "Handles leads & visits",
-                },
-                {
-                  id: "BUYER" as AdminRoleName,
-                  label: "Buyer",
-                  desc: "Explores & books",
-                },
-                {
-                  id: "ADMIN" as AdminRoleName,
-                  label: "Admin",
-                  desc: "Full management",
-                },
-              ].map((r) => (
+            <div className={`grid gap-2 ${ADMIN_ROLE_OPTIONS.length > 2 ? "grid-cols-3" : "grid-cols-2"}`}>
+              {ADMIN_ROLE_OPTIONS.map((r) => (
                 <button
-                  key={r.id}
+                  key={r.value}
                   type="button"
-                  onClick={() => setRole(r.id)}
+                  onClick={() => setRole(r.value)}
                   className={`flex flex-col items-start rounded-xl border p-2.5 text-left transition-all ${
-                    role === r.id
+                    role === r.value
                       ? "border-charcoal bg-charcoal/5 ring-1 ring-charcoal"
                       : "border-charcoal/15 bg-white hover:border-charcoal/30"
                   }`}
@@ -247,7 +232,7 @@ export function CreateUserModal({
                   <span className="text-xs font-bold text-charcoal">
                     {r.label}
                   </span>
-                  <span className="text-[10px] text-charcoal/60">{r.desc}</span>
+                  <span className="text-[10px] text-charcoal/60">{r.description}</span>
                 </button>
               ))}
             </div>

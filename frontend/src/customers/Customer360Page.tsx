@@ -1,11 +1,13 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, CircleDollarSign, Clock3, Languages, Mail, MessageCircle, Phone, Receipt, ShieldCheck, UserRound } from "lucide-react";
+import { Activity, ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, CircleDollarSign, Clock3, Languages, Mail, MessageCircle, Pencil, Phone, Receipt, ShieldCheck, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { fetchProjects, fetchUsers } from "../admin/api";
 import { customerKeys, fetchCustomer } from "./customersApi";
 import { groupTimelineByDay, stageLabel } from "./customersModel";
 import type { TimelineItem } from "./customersModel";
+import { ContactFormModal } from "./ContactFormModal";
 import { CustomerEmptyState, CustomerErrorBanner, CustomerPageHeader, CustomerSkeleton, formatCustomerDate, shortId } from "./CustomerUi";
 import { OpportunityStageControl } from "./OpportunityStageControl";
 
@@ -43,6 +45,7 @@ function TimelineEvent({ item }: { item: TimelineItem }) {
 
 export function Customer360Page() {
   const { id = "" } = useParams<{ id: string }>();
+  const [editOpen, setEditOpen] = useState(false);
   const query = useQuery({ queryKey: customerKeys.detail(id), queryFn: () => fetchCustomer(id), enabled: Boolean(id) });
   const projectsQuery = useQuery({ queryKey: ["admin", "projects", "customer-reference"], queryFn: () => fetchProjects({ pageSize: 100 }) });
   const usersQuery = useQuery({ queryKey: ["admin", "users", "customer-reference"], queryFn: () => fetchUsers({ pageSize: 100 }) });
@@ -57,7 +60,14 @@ export function Customer360Page() {
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
       <Link to="/admin/customers" className="inline-flex items-center gap-2 text-xs font-semibold text-charcoal/65 hover:text-charcoal"><ArrowLeft aria-hidden="true" className="size-4" />Customer directory</Link>
-      <CustomerPageHeader eyebrow="Customer & opportunity graph" title={contact.display_name} description={`Canonical contact · ${contact.canonical_key}`} action={<Link to={`/admin/customers/${contact.id}/duplicates`} className="inline-flex items-center gap-2 rounded-xl bg-charcoal px-4 py-2.5 text-xs font-semibold text-ivory">Review duplicates<ArrowRight aria-hidden="true" className="size-4" /></Link>} />
+      <CustomerPageHeader eyebrow="Customer & opportunity graph" title={contact.display_name} description={`Canonical contact · ${contact.canonical_key}`} action={
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => setEditOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-charcoal/15 bg-white px-4 py-2.5 text-xs font-semibold text-charcoal hover:bg-charcoal/5">
+            <Pencil aria-hidden="true" className="size-3.5" />Edit customer
+          </button>
+          <Link to={`/admin/customers/${contact.id}/duplicates`} className="inline-flex items-center gap-2 rounded-xl bg-charcoal px-4 py-2.5 text-xs font-semibold text-ivory">Review duplicates<ArrowRight aria-hidden="true" className="size-4" /></Link>
+        </div>
+      } />
       <CustomerErrorBanner error={projectsQuery.isError ? projectsQuery.error : usersQuery.isError ? usersQuery.error : null} fallback="Project or owner names could not be loaded. IDs are shown instead." />
       <section className="overflow-hidden rounded-2xl border border-charcoal/10 bg-white shadow-xs">
         <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
@@ -91,6 +101,14 @@ export function Customer360Page() {
         </section>
         <aside className="rounded-2xl border border-charcoal/10 bg-white p-5 shadow-xs lg:sticky lg:top-28"><h2 className="text-sm font-semibold">Data freshness</h2><p className="mt-1 text-xs leading-5 text-charcoal/50">Most recent source event returned by the graph.</p><dl className="mt-4 divide-y divide-charcoal/10">{Object.entries(freshness).map(([source, timestamp]) => <div key={source} className="py-3"><dt className="text-xs font-medium capitalize text-charcoal/60">{source}</dt><dd className="mt-1 text-xs font-semibold text-charcoal">{timestamp ? formatCustomerDate(timestamp, true) : "No events"}</dd></div>)}</dl></aside>
       </div>
+      {editOpen && (
+        <ContactFormModal
+          mode="edit"
+          contact={contact}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => void query.refetch()}
+        />
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import {
   Clock,
   Mail,
   MapPin,
+  Pencil,
   Phone,
   User,
   X,
@@ -18,6 +19,7 @@ type VisitDetailModalProps = {
   onReschedule?: (booking: BookingItem) => void;
   onCancel?: (booking: BookingItem) => void;
   onComplete?: (booking: BookingItem) => void;
+  onEditCustomer?: (booking: BookingItem) => void;
 };
 
 export function VisitDetailModal({
@@ -27,6 +29,7 @@ export function VisitDetailModal({
   onReschedule,
   onCancel,
   onComplete,
+  onEditCustomer,
 }: VisitDetailModalProps) {
   if (!isOpen || !booking) return null;
 
@@ -75,9 +78,20 @@ export function VisitDetailModal({
         <div className="flex flex-col gap-4 p-6">
           {/* Buyer Information Section */}
           <div className="rounded-xl border border-charcoal/10 bg-[#FAFAF7] p-4">
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-charcoal/50">
-              Prospective Buyer Information
-            </h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-charcoal/50">
+                Prospective Buyer Information
+              </h3>
+              {onEditCustomer && (
+                <button
+                  type="button"
+                  onClick={() => { onClose(); onEditCustomer(booking); }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-charcoal/15 bg-white px-2.5 py-1 text-[11px] font-semibold text-charcoal/75 hover:bg-charcoal/5 hover:text-charcoal"
+                >
+                  <Pencil aria-hidden="true" className="size-3" />Edit customer
+                </button>
+              )}
+            </div>
             <div className="mt-2 flex flex-col gap-1.5">
               <p className="font-sans font-semibold tracking-tight text-lg font-medium text-charcoal">
                 {booking.buyer_name}

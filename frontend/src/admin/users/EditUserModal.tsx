@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Edit3, Info, LoaderCircle, X } from "lucide-react";
 import type { AdminRoleName, UpdateUserPayload, UserItem } from "../adminModel";
+import { ADMIN_ROLE_OPTIONS } from "../adminModel";
 import { updateUser } from "../api";
 
 type EditUserModalProps = {
@@ -62,8 +63,8 @@ export function EditUserModal({
       const updated = await updateUser(user.id, payload);
       onSuccess(updated);
       onClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to update user profile.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update user profile.");
     } finally {
       setLoading(false);
     }
@@ -168,39 +169,34 @@ export function EditUserModal({
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
-                {[
-                  {
-                    id: "SALES_EXECUTIVE" as AdminRoleName,
-                    label: "Sales Exec",
-                    desc: "Assigned leads & visits",
-                  },
-                  {
-                    id: "BUYER" as AdminRoleName,
-                    label: "Buyer",
-                    desc: "Property discovery",
-                  },
-                  {
-                    id: "ADMIN" as AdminRoleName,
-                    label: "Admin",
-                    desc: "Full privileges",
-                  },
-                ].map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => setRole(r.id)}
-                    className={`flex flex-col items-start rounded-xl border p-2.5 text-left transition-all ${
-                      role === r.id
-                        ? "border-charcoal bg-charcoal/5 ring-1 ring-charcoal"
-                        : "border-charcoal/15 bg-white hover:border-charcoal/30"
-                    }`}
-                  >
-                    <span className="text-xs font-bold text-charcoal">
-                      {r.label}
-                    </span>
-                    <span className="text-[10px] text-charcoal/60">{r.desc}</span>
-                  </button>
-                ))}
+            {(
+              ADMIN_ROLE_OPTIONS.some((option) => option.value === user.role.name)
+                ? ADMIN_ROLE_OPTIONS
+                : [
+                    ...ADMIN_ROLE_OPTIONS,
+                    {
+                      value: user.role.name,
+                      label: user.role.name.replaceAll("_", " "),
+                      description: "Currently assigned",
+                    },
+                  ]
+            ).map((r) => (
+                <button
+                  key={r.value}
+                  type="button"
+                  onClick={() => setRole(r.value)}
+                  className={`flex flex-col items-start rounded-xl border p-2.5 text-left transition-all ${
+                    role === r.value
+                      ? "border-charcoal bg-charcoal/5 ring-1 ring-charcoal"
+                      : "border-charcoal/15 bg-white hover:border-charcoal/30"
+                  }`}
+                >
+                  <span className="text-xs font-bold text-charcoal">
+                    {r.label}
+                  </span>
+                  <span className="text-[10px] text-charcoal/60">{r.description}</span>
+                </button>
+              ))}
               </div>
             )}
           </div>

@@ -36,6 +36,9 @@ export function UserManagementPage() {
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
   const [statusTargetUser, setStatusTargetUser] = useState<UserItem | null>(null);
 
+  // Admin-only workspace; write controls are hidden for any other role.
+  const canManageUsers = currentAdmin.role.name === "ADMIN";
+
   // Success Feedback Toast
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -135,14 +138,16 @@ export function UserManagementPage() {
             Manage user accounts, assign roles, and administer system access across PropFlow.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setCreateModalOpen(true)}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-charcoal px-4 py-2.5 text-xs font-semibold text-ivory shadow-xs transition-opacity hover:opacity-95"
-        >
-          <Plus className="size-4" />
-          <span>Add User</span>
-        </button>
+        {canManageUsers && (
+          <button
+            type="button"
+            onClick={() => setCreateModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-charcoal px-4 py-2.5 text-xs font-semibold text-ivory shadow-xs transition-opacity hover:opacity-95"
+          >
+            <Plus className="size-4" />
+            <span>Add User</span>
+          </button>
+        )}
       </div>
 
       {/* Success Toast Banner */}
@@ -191,7 +196,7 @@ export function UserManagementPage() {
             Failed to Load Users
           </h3>
           <p className="mt-1 text-xs text-charcoal/60">
-            {(error as any)?.message || "A network or server error occurred."}
+            {error instanceof Error ? error.message : "A network or server error occurred."}
           </p>
           <button
             type="button"
@@ -333,28 +338,28 @@ export function UserManagementPage() {
         </>
       )}
 
-      {/* Modals */}
-      <CreateUserModal
+      {/* Modals (admin-only) */}
+      {canManageUsers && <CreateUserModal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onSuccess={handleUserCreated}
-      />
+      />}
 
-      <EditUserModal
+      {canManageUsers && <EditUserModal
         isOpen={Boolean(editingUser)}
         user={editingUser}
         currentAdminId={currentAdmin.id}
         onClose={() => setEditingUser(null)}
         onSuccess={handleUserUpdated}
-      />
+      />}
 
-      <ToggleStatusModal
+      {canManageUsers && <ToggleStatusModal
         isOpen={Boolean(statusTargetUser)}
         user={statusTargetUser}
         currentAdminId={currentAdmin.id}
         onClose={() => setStatusTargetUser(null)}
         onSuccess={handleUserStatusToggled}
-      />
+      />}
     </div>
   );
 }

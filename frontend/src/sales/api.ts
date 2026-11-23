@@ -450,6 +450,43 @@ export function fetchLeadDetail(leadId: string): Promise<SalesLead> {
   return authenticatedRequest<SalesLead>(`/leads/${leadId}`);
 }
 
+export interface LeadCreatePayload {
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  project_id: string;
+  source: LeadSource;
+  budget_min?: number | null;
+  budget_max?: number | null;
+  preferred_configuration?: string | null;
+  consent_to_contact: boolean;
+}
+
+/** POST /leads — intake endpoint (public, also callable with a staff token). */
+export function createLead(payload: LeadCreatePayload): Promise<SalesLead> {
+  return authenticatedRequest<SalesLead>("/leads", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface LeadUpdatePayload {
+  full_name?: string;
+  email?: string | null;
+  phone?: string | null;
+  budget_min?: number | null;
+  budget_max?: number | null;
+  preferred_configuration?: string | null;
+}
+
+/** PATCH /leads/{id} — contact/requirement fields only (admins see all leads). */
+export function updateLead(leadId: string, payload: LeadUpdatePayload): Promise<SalesLead> {
+  return authenticatedRequest<SalesLead>(`/leads/${leadId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function updateLeadStatus(
   leadId: string,
   status: LeadStatus,

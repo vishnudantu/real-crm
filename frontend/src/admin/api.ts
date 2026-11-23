@@ -97,7 +97,7 @@ async function authenticatedRequest<T>(
     );
   }
 
-  let payload: any = null;
+  let payload: unknown = null;
   try {
     payload = await response.json();
   } catch {
@@ -105,13 +105,30 @@ async function authenticatedRequest<T>(
   }
 
   if (!response.ok) {
-    const errorBody = payload?.error ?? payload ?? {};
-    let message = errorBody.message || "An unexpected error occurred.";
+    const record =
+      typeof payload === "object" && payload !== null
+        ? (payload as Record<string, unknown>)
+        : {};
+    const errorBody =
+      typeof record.error === "object" && record.error !== null
+        ? (record.error as Record<string, unknown>)
+        : record;
+    let message =
+      typeof errorBody.message === "string" && errorBody.message
+        ? errorBody.message
+        : "An unexpected error occurred.";
 
     // If details are present, combine them
-    if (Array.isArray(errorBody.details) && errorBody.details.length > 0) {
-      const detailsMsg = errorBody.details
-        .map((d: any) => d.message || d.msg || "")
+    const details = Array.isArray(errorBody.details) ? errorBody.details : [];
+    if (details.length > 0) {
+      const detailsMsg = details
+        .map((detail: unknown) => {
+          if (typeof detail !== "object" || detail === null) return "";
+          const entry = detail as Record<string, unknown>;
+          if (typeof entry.message === "string") return entry.message;
+          if (typeof entry.msg === "string") return entry.msg;
+          return "";
+        })
         .filter(Boolean)
         .join(", ");
       if (detailsMsg) {
@@ -121,9 +138,11 @@ async function authenticatedRequest<T>(
 
     throw new ApiError(
       response.status,
-      errorBody.code || `HTTP_${response.status}`,
+      typeof errorBody.code === "string" && errorBody.code
+        ? errorBody.code
+        : `HTTP_${response.status}`,
       message,
-      Array.isArray(errorBody.details) ? errorBody.details : undefined,
+      details.length > 0 ? (details as import("../auth/api").ErrorDetail[]) : undefined,
     );
   }
 

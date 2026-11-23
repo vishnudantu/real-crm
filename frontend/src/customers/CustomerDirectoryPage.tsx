@@ -1,11 +1,11 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, AtSign, ChevronLeft, ChevronRight, Languages, LoaderCircle, Mail, Phone, Search, Users } from "lucide-react";
-import { Link } from "react-router-dom";
-import { errorMessage } from "../shared/apiRequest";
+import { ArrowRight, AtSign, ChevronLeft, ChevronRight, Languages, LoaderCircle, Mail, Pencil, Phone, Plus, Search, UserPlus, Users } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { customerKeys, fetchCustomer, fetchCustomers, searchCustomer } from "./customersApi";
 import type { Contact, ContactSearchPayload, ContactSearchResponse } from "./customersModel";
+import { ContactFormModal } from "./ContactFormModal";
 import { CustomerEmptyState, CustomerErrorBanner, CustomerPageHeader, CustomerSkeleton, customerInputClass, formatCustomerDate } from "./CustomerUi";
 
 function searchPayload(search: string): ContactSearchPayload | null {
@@ -16,7 +16,10 @@ function searchPayload(search: string): ContactSearchPayload | null {
   return null;
 }
 
-function ExactMatchCard({ result }: { result: ContactSearchResponse }) {
+function ExactMatchCard({ result, onCreateContact }: {
+  result: ContactSearchResponse;
+  onCreateContact: () => void;
+}) {
   if (result.exists && result.contact) {
     return (
       <section aria-label="Exact contact match" className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5">
@@ -33,17 +36,17 @@ function ExactMatchCard({ result }: { result: ContactSearchResponse }) {
   }
   return (
     <section aria-label="No exact contact match" className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5">
-      <h2 className="text-sm font-semibold text-charcoal">No contact matched this email or phone. Create a new contact?</h2>
-      <p className="mt-2 text-xs leading-5 text-charcoal/65">Contacts are created when a website or channel lead is captured. Configure the website widget to start an enquiry; there is no separate contact-creation form or admin lead-creation route.</p>
+      <h2 className="text-sm font-semibold text-charcoal">No contact matched this email or phone. Create a new customer?</h2>
+      <p className="mt-2 text-xs leading-5 text-charcoal/65">Contacts are also created automatically when a website or channel lead is captured. Creating here is idempotent: a repeat submission returns the existing customer rather than a duplicate.</p>
       <div className="mt-4 flex flex-wrap gap-3">
-        <Link to="/admin/settings/widget" className="rounded-xl bg-charcoal px-4 py-2.5 text-xs font-semibold text-ivory">Open website widget settings</Link>
-        <Link to="/admin/customers" className="rounded-xl border border-charcoal/15 bg-white px-4 py-2.5 text-xs font-semibold text-charcoal">Back to directory</Link>
+        <button type="button" onClick={onCreateContact} className="inline-flex items-center gap-2 rounded-xl bg-charcoal px-4 py-2.5 text-xs font-semibold text-ivory"><UserPlus aria-hidden="true" className="size-4" />Create this contact</button>
+        <Link to="/admin/settings/widget" className="rounded-xl border border-charcoal/15 bg-white px-4 py-2.5 text-xs font-semibold text-charcoal">Website widget settings</Link>
       </div>
     </section>
   );
 }
 
-function DirectoryContactCard({ contact }: { contact: Contact }) {
+function DirectoryContactCard({ contact, onEdit }: { contact: Contact; onEdit: (contact: Contact) => void }) {
   const detailQuery = useQuery({
     queryKey: customerKeys.detail(contact.id),
     queryFn: () => fetchCustomer(contact.id),
@@ -53,34 +56,52 @@ function DirectoryContactCard({ contact }: { contact: Contact }) {
   const MethodIcon = primaryMethod?.kind === "EMAIL" ? Mail : Phone;
 
   return (
-    <Link to={`/admin/customers/${contact.id}`} className="group rounded-2xl border border-charcoal/10 bg-white p-5 shadow-xs transition hover:-translate-y-0.5 hover:border-charcoal/25 hover:shadow-md">
+    <article className="flex flex-col rounded-2xl border border-charcoal/10 bg-white p-5 shadow-xs transition hover:border-charcoal/25 hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-charcoal text-sm font-semibold text-ivory">{contact.display_name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span>
         <span className={`rounded-full px-2.5 py-1 text-[0.65rem] font-semibold ${contact.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800" : "bg-charcoal/5 text-charcoal/60"}`}>{contact.status}</span>
       </div>
-      <h2 className="mt-4 truncate text-base font-semibold text-charcoal">{contact.display_name}</h2>
-      <div className="mt-3 space-y-2 text-xs text-charcoal/55">
-        {detailQuery.isLoading ? <p role="status" className="flex items-center gap-2"><LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" />Loading contact summary…</p> : detailQuery.isError ? <p role="alert" className="text-xs leading-5 text-rose-700">Contact summary unavailable. Open the card to retry.{errorMessage(detailQuery.error, "Contact summary unavailable. Open the card to retry.")}</p> : <><p className="flex min-w-0 items-center gap-2"><MethodIcon aria-hidden="true" className="size-3.5 shrink-0" /><span className="truncate">{primaryMethod ? `${primaryMethod.is_primary ? "Primary" : primaryMethod.kind} · ${primaryMethod.value}` : "No primary contact method"}</span></p><p className="flex items-center gap-2"><Users aria-hidden="true" className="size-3.5" />{detailQuery.data?.opportunities.length ?? 0} {detailQuery.data?.opportunities.length === 1 ? "opportunity" : "opportunities"}</p></>}
+      <h2 className="mt-4 truncate text-base font-semibold text-charcoal">
+        <Link to={`/admin/customers/${contact.id}`} className="hover:underline">{contact.display_name}</Link>
+      </h2>
+      <div className="mt-3 flex-1 space-y-2 text-xs text-charcoal/55">
+        {detailQuery.isLoading ? <p role="status" className="flex items-center gap-2"><LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" />Loading contact summary…</p> : detailQuery.isError ? <p role="alert" className="text-xs leading-5 text-rose-700">Contact summary unavailable. Open the card to retry.</p> : <><p className="flex min-w-0 items-center gap-2"><MethodIcon aria-hidden="true" className="size-3.5 shrink-0" /><span className="truncate">{primaryMethod ? `${primaryMethod.is_primary ? "Primary" : primaryMethod.kind} · ${primaryMethod.value}` : "No primary contact method"}</span></p><p className="flex items-center gap-2"><Users aria-hidden="true" className="size-3.5" />{detailQuery.data?.opportunities.length ?? 0} {detailQuery.data?.opportunities.length === 1 ? "opportunity" : "opportunities"}</p></>}
         <p className="flex items-center gap-2"><Languages aria-hidden="true" className="size-3.5" />Language · <span className="font-medium text-charcoal uppercase">{contact.primary_language}</span></p>
         <p className="flex items-center gap-2"><AtSign aria-hidden="true" className="size-3.5" />Added {formatCustomerDate(contact.created_at)}</p>
       </div>
-      <span className="mt-5 flex items-center justify-between border-t border-charcoal/10 pt-4 text-xs font-semibold text-charcoal">Open customer 360 <ArrowRight aria-hidden="true" className="size-4 transition-transform group-hover:translate-x-1" /></span>
-    </Link>
+      <div className="mt-5 flex items-center justify-between gap-2 border-t border-charcoal/10 pt-4">
+        <Link to={`/admin/customers/${contact.id}`} className="inline-flex items-center gap-1.5 text-xs font-semibold text-charcoal hover:underline">Open customer 360 <ArrowRight aria-hidden="true" className="size-4" /></Link>
+        <button type="button" onClick={() => onEdit(contact)} aria-label={`Edit ${contact.display_name}`} className="inline-flex items-center gap-1.5 rounded-xl border border-charcoal/15 bg-white px-3 py-1.5 text-[11px] font-semibold text-charcoal/75 transition-colors hover:bg-charcoal/5 hover:text-charcoal">
+          <Pencil aria-hidden="true" className="size-3.5" />Edit
+        </button>
+      </div>
+    </article>
   );
 }
 
 export function CustomerDirectoryPage() {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [exactResult, setExactResult] = useState<ContactSearchResponse | null>(null);
   const [exactError, setExactError] = useState<unknown>(null);
   const [exactLoading, setExactLoading] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addDefaults, setAddDefaults] = useState<{ email: string; phone: string } | null>(null);
+  const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const pageSize = 20;
   const query = useQuery({
     queryKey: customerKeys.list(page, pageSize, search),
     queryFn: () => fetchCustomers(page, pageSize, search),
   });
+
+  const openAddWithIdentity = () => {
+    const value = searchDraft.trim();
+    const payload = searchPayload(value);
+    setAddDefaults(payload ? { email: payload.email ?? "", phone: payload.phone ?? "" } : null);
+    setAddOpen(true);
+  };
 
   const submitSearch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -103,7 +124,16 @@ export function CustomerDirectoryPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
-      <CustomerPageHeader eyebrow="Customer & opportunity graph" title="Customer directory" description="Find the canonical contact behind every conversation, opportunity and site visit." />
+      <CustomerPageHeader
+        eyebrow="Customer & opportunity graph"
+        title="Customer directory"
+        description="Find the canonical contact behind every conversation, opportunity and site visit."
+        action={
+          <button type="button" onClick={() => { setAddDefaults(null); setAddOpen(true); }} className="inline-flex items-center gap-2 rounded-xl bg-charcoal px-4 py-2.5 text-xs font-semibold text-ivory hover:opacity-95">
+            <Plus aria-hidden="true" className="size-4" />Add customer
+          </button>
+        }
+      />
       <section className="rounded-2xl border border-charcoal/10 bg-white p-5 shadow-xs sm:p-6">
         <form onSubmit={(event) => void submitSearch(event)} className="flex flex-col gap-3 sm:flex-row">
           <label className="relative min-w-0 flex-1">
@@ -117,11 +147,20 @@ export function CustomerDirectoryPage() {
       </section>
       {exactLoading && <CustomerSkeleton rows={1} />}
       <CustomerErrorBanner error={exactError} fallback="The exact contact lookup could not be completed." />
-      {exactResult && <ExactMatchCard result={exactResult} />}
+      {exactResult && <ExactMatchCard result={exactResult} onCreateContact={openAddWithIdentity} />}
       {query.isLoading ? <CustomerSkeleton /> : query.isError ? (
         <CustomerErrorBanner error={query.error} fallback="The customer directory could not be loaded." onRetry={() => void query.refetch()} />
       ) : query.data && query.data.items.length === 0 ? (
-        <CustomerEmptyState title={search ? "No matching customers" : "No customers yet"} description={search ? "Try a different name, or check an exact email or phone above." : "New leads will appear here once their contact identity is resolved."} action={<Link to="/admin/settings/widget" className="text-xs font-semibold text-charcoal underline">Configure website widget</Link>} />
+        <CustomerEmptyState
+          title={search ? "No matching customers" : "No customers yet"}
+          description={search ? "Try a different name, or check an exact email or phone above." : "Add a customer manually, or connect the website widget to capture enquiries automatically."}
+          action={
+            <div className="flex flex-wrap justify-center gap-3">
+              <button type="button" onClick={() => { setAddDefaults(null); setAddOpen(true); }} className="inline-flex items-center gap-2 rounded-xl bg-charcoal px-4 py-2.5 text-xs font-semibold text-ivory hover:opacity-95"><UserPlus aria-hidden="true" className="size-4" />Add customer</button>
+              <Link to="/admin/settings/widget" className="inline-flex items-center rounded-xl border border-charcoal/15 bg-white px-4 py-2.5 text-xs font-semibold text-charcoal">Configure website widget</Link>
+            </div>
+          }
+        />
       ) : query.data ? (
         <>
           <div className="flex items-center justify-between text-xs text-charcoal/55">
@@ -129,7 +168,7 @@ export function CustomerDirectoryPage() {
             <p>Page {query.data.page} of {Math.max(query.data.pages, 1)}</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {query.data.items.map((contact) => <DirectoryContactCard key={contact.id} contact={contact} />)}
+            {query.data.items.map((contact) => <DirectoryContactCard key={contact.id} contact={contact} onEdit={setEditingContact} />)}
           </div>
           {query.data.pages > 1 && (
             <nav aria-label="Customer directory pages" className="flex items-center justify-between rounded-2xl border border-charcoal/10 bg-white p-3">
@@ -141,6 +180,24 @@ export function CustomerDirectoryPage() {
         </>
       ) : null}
       <div className="flex items-center gap-2 text-xs text-charcoal/45"><Users aria-hidden="true" className="size-4" /><span>Canonical contacts exclude identities already merged into another customer.</span></div>
+      {addOpen && (
+        <ContactFormModal
+          mode="create"
+          initialValues={addDefaults ?? undefined}
+          onClose={() => setAddOpen(false)}
+          onCreated={(contact, created) => {
+            if (created) navigate(`/admin/customers/${contact.id}`);
+          }}
+        />
+      )}
+      {editingContact && (
+        <ContactFormModal
+          mode="edit"
+          contact={editingContact}
+          onClose={() => setEditingContact(null)}
+          onSaved={(contact) => navigate(`/admin/customers/${contact.id}`)}
+        />
+      )}
     </div>
   );
 }

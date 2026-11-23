@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   CalendarDays,
+  CalendarPlus,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -24,10 +25,13 @@ import {
   updateBookingStatus,
   updateSlot,
 } from "./api";
+import { fetchLeadDetail, fetchLeads, type SalesLead } from "../sales/api";
 import { CancelVisitModal } from "./visits/CancelVisitModal";
 import { CreateSlotModal } from "./visits/CreateSlotModal";
 import { EditSlotModal } from "./visits/EditSlotModal";
+import { EditVisitCustomerModal } from "./visits/EditVisitCustomerModal";
 import { RescheduleVisitModal } from "./visits/RescheduleVisitModal";
+import { ScheduleVisitModal } from "./visits/ScheduleVisitModal";
 import { SlotCardList } from "./visits/SlotCardList";
 import { SlotTable } from "./visits/SlotTable";
 import { VisitCardList } from "./visits/VisitCardList";
@@ -52,10 +56,13 @@ export function VisitManagementPage() {
 
   // Modal States
   const [createSlotModalOpen, setCreateSlotModalOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [editingSlot, setEditingSlot] = useState<VisitSlotItem | null>(null);
   const [viewingBooking, setViewingBooking] = useState<BookingItem | null>(null);
   const [reschedulingBooking, setReschedulingBooking] = useState<BookingItem | null>(null);
   const [cancellingBooking, setCancellingBooking] = useState<BookingItem | null>(null);
+  const [editingVisitLead, setEditingVisitLead] = useState<SalesLead | null>(null);
+  const [visitLeadError, setVisitLeadError] = useState<string | null>(null);
 
   // Success Feedback Toast
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -73,6 +80,17 @@ export function VisitManagementPage() {
     queryFn: () => fetchProjects({ pageSize: 50 }),
   });
   const projects: ProjectItem[] = projectsData?.items || [];
+
+  // 1b. Leads for visit scheduling (fetched when the scheduler opens)
+  const {
+    data: leadsData,
+    refetch: refetchLeads,
+  } = useQuery({
+    queryKey: ["admin", "visits", "leads"],
+    queryFn: () => fetchLeads({ pageSize: 100 }),
+    enabled: scheduleOpen,
+  });
+  const leads: SalesLead[] = leadsData?.items ?? [];
 
   // 2. Metrics Query
   const {
@@ -162,8 +180,8 @@ export function VisitManagementPage() {
       showSuccess(
         `Visit slot is now ${nextActive ? "available" : "blocked"}.`,
       );
-    } catch (err: any) {
-      alert(err?.message || "Failed to update slot status.");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to update slot status.");
     }
   };
 
@@ -188,9 +206,40 @@ export function VisitManagementPage() {
       queryClient.invalidateQueries({ queryKey: ["admin", "bookings"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "bookings", "metrics"] });
       showSuccess(`Site visit for ${b.buyer_name} marked as completed.`);
-    } catch (err: any) {
-      alert(err?.message || "Failed to mark visit completed.");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to mark visit completed.");
     }
+  };
+
+  // Visit customer (lead) CRUD
+  const openVisitCustomerEditor = async (booking: BookingItem) => {
+    setVisitLeadError(null);
+    try {
+      const lead = await fetchLeadDetail(booking.lead_id);
+      setEditingVisitLead(lead);
+    } catch (err: unknown) {
+      setVisitLeadError(
+        err instanceof Error
+          ? err.message
+          : "This visit's lead record could not be loaded.",
+      );
+    }
+  };
+
+  const handleVisitCustomerSaved = (updated: SalesLead) => {
+    queryClient.invalidateQueries({ queryKey: ["admin", "bookings"] });
+    queryClient.invalidateQueries({ queryKey: ["admin", "visits", "leads"] });
+    setViewingBooking((current) =>
+      current && current.lead_id === updated.id
+        ? {
+            ...current,
+            buyer_name: updated.full_name,
+            buyer_email: updated.email,
+            buyer_phone: updated.phone,
+          }
+        : current,
+    );
+    showSuccess(`Visit customer updated to ${updated.full_name}.`);
   };
 
   // Pagination calculation based on active tab
@@ -219,16 +268,26 @@ export function VisitManagementPage() {
             Monitor prospective buyer appointments, configure property visit slots, and manage developer availability.
           </p>
         </div>
-        <button
-          type="button"
-          id="create-slot-btn"
-          data-testid="create-slot-btn"
-          onClick={() => setCreateSlotModalOpen(true)}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-charcoal px-4 py-2.5 text-xs font-semibold text-ivory shadow-xs transition-opacity hover:opacity-95"
-        >
-          <Plus className="size-4" />
-          <span>Add Visit Slot</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setScheduleOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-forest-deep"
+          >
+            <CalendarPlus className="size-4" />
+            <span>Schedule visit</span>
+          </button>
+          <button
+            type="button"
+            id="create-slot-btn"
+            data-testid="create-slot-btn"
+            onClick={() => setCreateSlotModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-charcoal px-4 py-2.5 text-xs font-semibold text-ivory shadow-xs transition-opacity hover:opacity-95"
+          >
+            <Plus className="size-4" />
+            <span>Add Visit Slot</span>
+          </button>
+        </div>
       </div>
 
       {/* Success Toast Banner */}
@@ -294,6 +353,14 @@ export function VisitManagementPage() {
         onReset={handleResetFilters}
       />
 
+      {/* Visit customer error toast */}
+      {visitLeadError && (
+        <div className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-800 shadow-xs">
+          <span>{visitLeadError}</span>
+          <button type="button" onClick={() => setVisitLeadError(null)} className="text-rose-700/70 hover:text-rose-900">Dismiss</button>
+        </div>
+      )}
+
       {/* Error State */}
       {currentIsError && (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-xs">
@@ -302,7 +369,7 @@ export function VisitManagementPage() {
             Failed to Load Data
           </h3>
           <p className="mt-1 text-xs text-charcoal/60">
-            {(currentError as any)?.message || "A network or server error occurred."}
+            {currentError instanceof Error ? currentError.message : "A network or server error occurred."}
           </p>
           <button
             type="button"
@@ -483,6 +550,21 @@ export function VisitManagementPage() {
       )}
 
       {/* Modals */}
+      <ScheduleVisitModal
+        isOpen={scheduleOpen}
+        leads={leads}
+        projects={projects}
+        onClose={() => setScheduleOpen(false)}
+        onLeadsChanged={() => void refetchLeads()}
+        onScheduled={(booking) => {
+          queryClient.invalidateQueries({ queryKey: ["admin", "bookings"] });
+          queryClient.invalidateQueries({ queryKey: ["admin", "slots"] });
+          queryClient.invalidateQueries({ queryKey: ["admin", "bookings", "metrics"] });
+          queryClient.invalidateQueries({ queryKey: ["admin", "customers"] });
+          showSuccess(`Site visit for ${booking.buyer_name} scheduled successfully.`);
+        }}
+      />
+
       <CreateSlotModal
         isOpen={createSlotModalOpen}
         onClose={() => setCreateSlotModalOpen(false)}
@@ -504,6 +586,7 @@ export function VisitManagementPage() {
         onReschedule={(b) => setReschedulingBooking(b)}
         onCancel={(b) => setCancellingBooking(b)}
         onComplete={handleCompleteBooking}
+        onEditCustomer={(b) => void openVisitCustomerEditor(b)}
       />
 
       <RescheduleVisitModal
@@ -518,6 +601,12 @@ export function VisitManagementPage() {
         isOpen={Boolean(cancellingBooking)}
         onClose={() => setCancellingBooking(null)}
         onSuccess={handleBookingCancelled}
+      />
+
+      <EditVisitCustomerModal
+        lead={editingVisitLead}
+        onClose={() => setEditingVisitLead(null)}
+        onSaved={handleVisitCustomerSaved}
       />
     </div>
   );
