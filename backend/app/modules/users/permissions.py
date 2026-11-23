@@ -69,6 +69,8 @@ def _build_permissions() -> tuple[PermissionDefinition, ...]:
         _permission("documents", "issue", "Prepare and issue demand letters and receipt PDFs.", admin),
         _permission("approvals", "request", "Open, view, and cancel approval requests.", admin, sales),
         _permission("approvals", "decide", "Approve or reject pending requests.", admin),
+        _permission("deal_desk", "read", "View cost sheets, the discount matrix, and quotes.", admin, manager, sales),
+        _permission("deal_desk", "manage", "Author cost sheets and edit the tenant discount matrix.", admin, manager),
         _permission("messaging", "send", "Send and test tenant messages.", admin),
         _permission("messaging", "configure", "Manage message templates, rules, and channel credentials.", admin),
         _permission("teamchat", "use", "Use internal staff team chat.", admin, sales),
@@ -102,6 +104,9 @@ PERMISSION_ROLE_GATES = {
 INVENTORY_READ = "inventory.read"
 INVENTORY_WRITE = "inventory.write"
 INVENTORY_HOLDS = "inventory.holds"
+APPROVALS_REQUEST = "approvals.request"
+DEAL_DESK_READ = "deal_desk.read"
+DEAL_DESK_MANAGE = "deal_desk.manage"
 
 
 def validate_permissions(keys: list[str]) -> list[str]:
