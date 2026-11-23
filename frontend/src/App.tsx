@@ -37,6 +37,7 @@ import { Customer360Page } from "./customers/Customer360Page";
 import { CustomerDuplicatesPage } from "./customers/CustomerDuplicatesPage";
 import { OpportunityPipelinePage } from "./customers/OpportunityPipelinePage";
 import { InventoryMapPage } from "./inventory/InventoryMapPage";
+import { SunFacingPage } from "./solar/SunFacingPage";
 import { InventoryUnitsPage } from "./inventory/InventoryUnitsPage";
 import { DocumentsPage } from "./documents/DocumentsPage";
 import { TeamChatPage } from "./teamchat/TeamChatPage";
@@ -374,6 +375,7 @@ export default function App() {
               <Route path="opportunities" element={<OpportunityPipelinePage />} />
               <Route path="inventory" element={<InventoryMapPage />} />
               <Route path="inventory/units" element={<InventoryUnitsPage />} />
+              <Route path="inventory/sun-facing" element={<SunFacingPage />} />
               <Route path="visits" element={<VisitManagementPage />} />
               <Route path="analytics" element={<AnalyticsDashboardPage />} />
               <Route

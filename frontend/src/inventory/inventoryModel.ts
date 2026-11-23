@@ -557,3 +557,26 @@ export function holdCountdown(expiresAt: string, nowMs: number): string {
   if (hours > 0) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
   return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
 }
+
+/** Header the bulk CSV parser accepts (aliases covered: code/config/plot/...). */
+export const SAMPLE_UNIT_CSV = [
+  "code,configuration,facing,carpet_area,floor,tower,position,built_up_area,plot_number,status",
+  "A-101,2 BHK,East,1200,1,A,Corner,1350,,AVAILABLE",
+  "A-102,3 BHK,West,1450,2,A,,1600,,AVAILABLE",
+  "A-103,3 BHK,North East,1500,3,B,,1680,,DRAFT",
+  "P-201,Plot,North,2400,,,,2400,P-201,AVAILABLE",
+].join("\n");
+
+/** Trigger a browser download of a text file (sample CSV for bulk import). */
+export function downloadTextFile(filename: string, text: string): void {
+  const blob = new Blob([text], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}

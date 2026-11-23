@@ -42,6 +42,13 @@ export function fetchAvailability(projectId: string): Promise<AvailabilityRespon
   return request<AvailabilityResponse>(`/inventory/availability/${projectId}`);
 }
 
+export function createUnit(payload: UnitCreateRequest): Promise<Unit> {
+  return request<Unit>("/inventory/units", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function bulkCreateUnits(
   rows: UnitCreateRequest[],
   dryRun: boolean,

@@ -6,17 +6,19 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Download,
   FileUp,
   Info,
   LayoutGrid,
   LoaderCircle,
+  Plus,
   XCircle,
 } from "lucide-react";
 import { errorMessage } from "../shared/apiRequest";
 import { projectTypeLabel } from "../admin/projectModel";
 import { bulkCreateUnits, fetchUnits } from "./inventoryApi";
 import type { BulkUnitCreateResponse, UnitStatus } from "./inventoryModel";
-import { bulkCsvParse, statusLabel, UNIT_STATUSES, unitAuthoringGuidance } from "./inventoryModel";
+import { bulkCsvParse, downloadTextFile, SAMPLE_UNIT_CSV, statusLabel, UNIT_STATUSES, unitAuthoringGuidance } from "./inventoryModel";
 import {
   inventoryCardClasses,
   inventoryInputClasses,
@@ -27,6 +29,7 @@ import {
 } from "./inventoryUi";
 import { useInventoryProjects } from "./useInventoryProjects";
 import { UnitDetailDrawer } from "./UnitDetailDrawer";
+import { CreateUnitDialog } from "./CreateUnitDialog";
 
 const PAGE_SIZES = [10, 20, 50, 100] as const;
 const CSV_PLACEHOLDER = `code,configuration,facing,carpet_area
@@ -48,6 +51,7 @@ export function InventoryUnitsPage() {
   const [preview, setPreview] = useState<BulkUnitCreateResponse | null>(null);
   const [importing, setImporting] = useState<"preview" | "commit" | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [addUnitOpen, setAddUnitOpen] = useState(false);
 
   useEffect(() => {
     if (!projectId && projects[0]) setProjectId(projects[0].id);
@@ -144,10 +148,21 @@ export function InventoryUnitsPage() {
             with a server-side dry run before anything is committed.
           </p>
         </div>
-        <Link to="/admin/inventory" className={inventorySecondaryButton}>
-          <LayoutGrid aria-hidden="true" className="size-3.5" />
-          Inventory map
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAddUnitOpen(true)}
+            className={inventoryPrimaryButton}
+            title="Add one unit manually"
+          >
+            <Plus aria-hidden="true" className="size-3.5" />
+            Add unit
+          </button>
+          <Link to="/admin/inventory" className={inventorySecondaryButton}>
+            <LayoutGrid aria-hidden="true" className="size-3.5" />
+            Inventory map
+          </Link>
+        </div>
       </div>
 
       {notice && (
@@ -316,11 +331,12 @@ export function InventoryUnitsPage() {
       )}
 
       <section aria-label="Bulk CSV import" className={`${inventoryCardClasses} p-5`}>
-        <div className="flex items-start gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-charcoal/5 text-charcoal">
-            <FileUp aria-hidden="true" className="size-4" />
-          </span>
-          <div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-charcoal/5 text-charcoal">
+              <FileUp aria-hidden="true" className="size-4" />
+            </span>
+            <div>
             <h2 className="text-base font-semibold tracking-tight text-charcoal">Bulk import units</h2>
             <p className="mt-1 max-w-3xl text-xs leading-relaxed text-charcoal/60">
               Paste CSV with a header row. Required: <code className="rounded bg-charcoal/5 px-1 font-mono">code</code>.
@@ -339,6 +355,16 @@ export function InventoryUnitsPage() {
               </p>
             )}
           </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => downloadTextFile("propflow-units-sample.csv", SAMPLE_UNIT_CSV)}
+            className={inventorySecondaryButton}
+            title="Download a sample CSV with the accepted columns"
+          >
+            <Download aria-hidden="true" className="size-3.5" />
+            Sample CSV
+          </button>
         </div>
 
         <div className="mt-4">
@@ -470,6 +496,19 @@ export function InventoryUnitsPage() {
           projectType={selectedProject?.project_type}
           onClose={() => setSelectedUnitId(null)}
           onChanged={(message) => setNotice(message)}
+        />
+      )}
+
+      {addUnitOpen && projectId && (
+        <CreateUnitDialog
+          projectId={projectId}
+          projectType={selectedProject?.project_type}
+          onClose={() => setAddUnitOpen(false)}
+          onCreated={async (code) => {
+            setAddUnitOpen(false);
+            await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+            setNotice(`Unit ${code} created as DRAFT.`);
+          }}
         />
       )}
     </div>

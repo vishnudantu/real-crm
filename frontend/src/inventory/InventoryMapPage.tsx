@@ -30,11 +30,7 @@ import {
 import { useInventoryProjects } from "./useInventoryProjects";
 import { UnitDetailDrawer } from "./UnitDetailDrawer";
 
-const MAP_PAGE_SIZE = 100;
-const CELL_WIDTH = 132;
-const CELL_HEIGHT = 68;
-const CELL_GAP = 8;
-const FLOOR_LABEL_WIDTH = 76;
+const MAP_PAGE_SIZE = 1000;
 
 export function InventoryMapPage() {
   const { projects, isLoading: projectsLoading, isError: projectsError, error: projectsLoadError } =
@@ -44,6 +40,7 @@ export function InventoryMapPage() {
   const [search, setSearch] = useState("");
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [activeTower, setActiveTower] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectId && projects[0]) setProjectId(projects[0].id);
@@ -77,6 +74,13 @@ export function InventoryMapPage() {
   const groups = useMemo(() => groupUnitsByFloorTower(filteredUnits), [filteredUnits]);
   const units = unitsQuery.data?.items ?? [];
   const counts = availabilityQuery.data?.counts ?? {};
+
+  // Active tower: default to the first, reset when the project changes, and
+  // fall back to the first tower if the current selection no longer matches.
+  const visibleTower = useMemo(() => {
+    if (groups.length === 0) return null;
+    return groups.find((tower) => tower.tower === activeTower) ?? groups[0];
+  }, [groups, activeTower]);
 
   const refresh = async () => {
     await Promise.all([unitsQuery.refetch(), availabilityQuery.refetch()]);
@@ -123,6 +127,7 @@ export function InventoryMapPage() {
                 setProjectId(event.target.value);
                 setSelectedUnitId(null);
                 setNotice(null);
+                setActiveTower(null);
               }}
               disabled={projectsLoading || projects.length === 0}
               className={inventoryInputClasses}
@@ -295,59 +300,95 @@ export function InventoryMapPage() {
         )}
 
         {!unitsQuery.isLoading && groups.length > 0 && (
-          <div className="space-y-6">
-            {groups.map((tower) => (
-              <section key={tower.tower} aria-label={tower.tower} className="rounded-xl border border-charcoal/10 bg-[#FAFAF7] p-3">
-                <h3 className="mb-3 text-xs font-semibold tracking-wider text-charcoal/65 uppercase">
-                  {tower.tower === "Unassigned tower" ? tower.tower : `Tower ${tower.tower}`}
-                </h3>
-                <div className="space-y-4 overflow-x-auto pb-1">
-                  {tower.floors.map((floor) => (
-                    <div key={floor.floor}>
-                      <h4 className="mb-1.5 text-[11px] font-semibold text-charcoal/55">
-                        {floor.floor === "Unassigned floor" ? floor.floor : `Floor ${floor.floor}`}
-                      </h4>
-                      <svg
-                        role="group"
-                        aria-label={`${tower.tower}, ${floor.floor}, ${floor.units.length} units`}
-                        width={FLOOR_LABEL_WIDTH + floor.units.length * (CELL_WIDTH + CELL_GAP)}
-                        height={CELL_HEIGHT}
-                        className="block max-w-none overflow-visible"
+          <>
+            {/* Tower selector: keeps a 10-tower, 1000-unit project navigable
+                without one giant canvas — one tower at a time, cleanly. */}
+            {groups.length > 1 && (
+              <div role="tablist" aria-label="Towers" className="mb-4 flex flex-wrap gap-2">
+                {groups.map((tower) => {
+                  const active = visibleTower?.tower === tower.tower;
+                  const towerUnitCount = tower.floors.reduce((sum, floor) => sum + floor.units.length, 0);
+                  return (
+                    <button
+                      key={tower.tower}
+                      role="tab"
+                      type="button"
+                      aria-selected={active}
+                      onClick={() => setActiveTower(tower.tower)}
+                      className={`inline-flex min-h-9 items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-colors ${
+                        active
+                          ? "border-forest bg-forest text-ivory shadow-xs"
+                          : "border-charcoal/15 bg-white text-charcoal/70 hover:bg-charcoal/5"
+                      }`}
+                    >
+                      <Building2 aria-hidden="true" className="size-3.5" />
+                      {tower.tower === "Unassigned tower" ? tower.tower : `Tower ${tower.tower}`}
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                          active ? "bg-ivory/25 text-ivory" : "bg-charcoal/10 text-charcoal/60"
+                        }`}
                       >
-                        {floor.units.map((unit, index) => {
+                        {towerUnitCount}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {visibleTower && (
+              <section aria-label={`Tower ${visibleTower.tower} map`} className="rounded-xl border border-charcoal/10 bg-[#FAFAF7] p-3 sm:p-4">
+                <h3 className="mb-3 text-xs font-semibold tracking-wider text-charcoal/65 uppercase">
+                  {visibleTower.tower === "Unassigned tower"
+                    ? visibleTower.tower
+                    : `Tower ${visibleTower.tower}`}{" "}
+                  · {visibleTower.floors.reduce((sum, floor) => sum + floor.units.length, 0)} units
+                </h3>
+                <div className="space-y-4">
+                  {visibleTower.floors.map((floor) => (
+                    <div key={floor.floor}>
+                      <div className="mb-1.5 flex items-baseline gap-2">
+                        <h4 className="text-[11px] font-semibold text-charcoal/55">
+                          {floor.floor === "Unassigned floor" ? floor.floor : `Floor ${floor.floor}`}
+                        </h4>
+                        <span className="text-[10px] text-charcoal/40">{floor.units.length}</span>
+                      </div>
+                      <div
+                        role="group"
+                        aria-label={`${visibleTower.tower}, ${floor.floor}, ${floor.units.length} units`}
+                        className="grid gap-1.5"
+                        style={{
+                          gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))",
+                        }}
+                      >
+                        {floor.units.map((unit) => {
                           const visual = statusVisual(unit.status);
-                          const x = FLOOR_LABEL_WIDTH + index * (CELL_WIDTH + CELL_GAP);
                           return (
-                            <foreignObject key={unit.id} x={x} y={0} width={CELL_WIDTH} height={CELL_HEIGHT}>
-                              <button
-                                type="button"
-                                onClick={() => setSelectedUnitId(unit.id)}
-                                aria-label={`${unit.internal_code}, ${statusLabel(unit.status)}${unit.configuration ? `, ${unit.configuration}` : ""}`}
-                                className={`flex h-[68px] w-[132px] flex-col items-start justify-between rounded-lg border p-2 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-charcoal focus-visible:ring-offset-1 ${CELL_TONES[visual.tone]}`}
-                              >
-                                <span className="flex w-full items-center justify-between gap-1">
-                                  <span className="truncate text-xs font-bold">{unit.internal_code}</span>
-                                  <StatusIcon status={unit.status} className="size-3.5 shrink-0" />
-                                </span>
-                                <span className="w-full">
-                                  <span className="block truncate text-[10px] font-semibold">
-                                    {unit.configuration ?? "Configuration —"}
-                                  </span>
-                                  <span className="block truncate text-[10px] font-medium opacity-80">
-                                    {statusLabel(unit.status)}
-                                  </span>
-                                </span>
-                              </button>
-                            </foreignObject>
+                            <button
+                              key={unit.id}
+                              type="button"
+                              onClick={() => setSelectedUnitId(unit.id)}
+                              aria-label={`${unit.internal_code}, ${statusLabel(unit.status)}${unit.configuration ? `, ${unit.configuration}` : ""}`}
+                              title={`${unit.internal_code} · ${unit.configuration ?? ""} · ${statusLabel(unit.status)}`}
+                              className={`flex h-12 flex-col items-start justify-between rounded-md border px-1.5 py-1 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-charcoal focus-visible:ring-offset-1 ${CELL_TONES[visual.tone]}`}
+                            >
+                              <span className="flex w-full items-center justify-between gap-1">
+                                <span className="truncate text-[10.5px] font-bold">{unit.internal_code}</span>
+                                <StatusIcon status={unit.status} className="size-3 shrink-0" />
+                              </span>
+                              <span className="block w-full truncate text-[9px] font-semibold opacity-80">
+                                {unit.configuration ?? statusLabel(unit.status)}
+                              </span>
+                            </button>
                           );
                         })}
-                      </svg>
+                      </div>
                     </div>
                   ))}
                 </div>
               </section>
-            ))}
-          </div>
+            )}
+          </>
         )}
 
         {(unitsQuery.data?.total ?? 0) > units.length && (
