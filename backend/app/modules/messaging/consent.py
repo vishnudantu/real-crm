@@ -47,6 +47,10 @@ TRANSACTIONAL_EVENTS = frozenset({
     "document.demand_letter_issued",
     "visit_reminder_24h",
     "visit_reminder_2h",
+    # Collections reminders serve the existing sale contract (a scheduled
+    # payment demand), so they follow the contract-performance basis:
+    # suppressed only by explicit opt-out, never by absent marketing consent.
+    "collection.reminder",
     "lead_assigned",
     "handoff_assigned",
     "handoff_status",

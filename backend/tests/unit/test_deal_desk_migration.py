@@ -67,7 +67,7 @@ def test_deal_desk_migration_is_idempotent_and_seeds_defaults() -> None:
 
     migration = _load_migration()
     assert migration.revision == "a7f3c1d92b64"
-    assert migration.down_revision == "e2b7c4a9d1f6"
+    assert migration.down_revision == "a3f5c7e9b2d4"
 
     with engine.begin() as connection:
         _run_upgrade(connection, migration)

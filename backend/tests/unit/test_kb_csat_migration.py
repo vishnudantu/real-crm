@@ -47,7 +47,7 @@ def test_kb_csat_migration_is_idempotent_and_enforces_constraints() -> None:
     migration = _load_migration()
     assert migration.revision == "a3f5c7e9b2d4"
     assert len(migration.revision) == 12
-    assert migration.down_revision == "e2b7c4a9d1f6"
+    assert migration.down_revision == "d9b3e5c7a1f4"
 
     with engine.begin() as connection:
         migration.op = Operations(MigrationContext.configure(connection))
