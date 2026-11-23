@@ -80,6 +80,7 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
       { label: "Inventory Map", shortLabel: "Map", to: "/admin/inventory", exact: true },
       { label: "Units & Import", shortLabel: "Units", to: "/admin/inventory/units" },
       { label: "Sun & Facing", shortLabel: "Sun & Facing", to: "/admin/inventory/sun-facing" },
+      { label: "Inventory Intelligence", shortLabel: "Intelligence", to: "/admin/inventory/intelligence" },
     ],
   },
   {
