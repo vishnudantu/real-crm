@@ -16,6 +16,7 @@ from app.modules.construction.router import router as construction_router
 from app.modules.conversations.router import router as conversations_router
 from app.modules.customers.router import opportunities_router, router as customers_router
 from app.modules.dashboard.router import router as dashboard_router
+from app.modules.deal_desk.router import router as deal_desk_router
 from app.modules.documents.router import router as documents_router
 from app.modules.follow_ups.router import router as follow_ups_router
 from app.modules.handoffs.router import handoffs_router
@@ -76,6 +77,7 @@ api_router.include_router(inventory_router)
 api_router.include_router(billing_router)
 api_router.include_router(postsales_router)
 api_router.include_router(construction_router)
+api_router.include_router(deal_desk_router)
 api_router.include_router(reconciliation_router)
 api_router.include_router(documents_router)
 api_router.include_router(teamchat_router)

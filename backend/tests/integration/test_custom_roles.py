@@ -61,8 +61,8 @@ def test_permission_registry_shape_and_validation(
     user_factory: Callable[..., User],
     auth_headers: Callable[..., dict[str, str]],
 ) -> None:
-    assert len(PERMISSION_REGISTRY) == 30
-    assert len(GRANTABLE_PERMISSIONS) == 26
+    assert len(PERMISSION_REGISTRY) == 32
+    assert len(GRANTABLE_PERMISSIONS) == 28
     assert PROTECTED_PERMISSIONS == {
         "settings.manage", "users.manage", "roles.manage", "operator.access"
     }
@@ -83,7 +83,7 @@ def test_permission_registry_shape_and_validation(
     response = client.get("/api/v1/roles/permissions", headers=headers)
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["total"] == 30
+    assert body["total"] == 32
     assert {item["key"] for item in body["items"]} == set(PERMISSION_REGISTRY)
     assert all(
         {"key", "area", "description", "grantable", "enabled"} == set(item)

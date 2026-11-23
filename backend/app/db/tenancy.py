@@ -96,4 +96,5 @@ TENANT_TABLES = frozenset({
     "call_dispositions", "do_not_call_entries", "scheduled_callbacks",
     "construction_milestones", "milestone_updates",
     "tower_orientations", "custom_roles",
+    "deal_desk_cost_sheets", "deal_desk_discount_matrix_bands", "deal_desk_quotes",
 })
