@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.modules.auth.dependencies import AdminUser, CurrentUser, require_roles
 from app.modules.users.models import RoleName, User
-from app.modules.postsales import repository, service
+from app.modules.postsales import cancellation, repository, service
 from app.modules.postsales.schemas import (
     BrokerCommissionCreateRequest,
     BrokerCommissionResponse,
@@ -23,6 +23,8 @@ from app.modules.postsales.schemas import (
     ReceiptCreateRequest,
     ReceiptResponse,
     ReceiptVoidRequest,
+    SaleBookingCancelRequest,
+    SaleBookingCancelResponse,
     SaleBookingCreateRequest,
     SaleBookingListResponse,
     SaleBookingResponse,
@@ -90,6 +92,45 @@ def update_booking_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     return service.update_booking(db, actor=admin, booking_id=booking_id, payload=payload)
+
+
+@router.post("/{booking_id}/cancel", response_model=SaleBookingCancelResponse)
+def cancel_booking_endpoint(
+    booking_id: UUID,
+    payload: SaleBookingCancelRequest,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> SaleBookingCancelResponse:
+    """Cancel a sale booking under the tenant policy: fee, refund-due, unit release.
+
+    Money is never moved: paid receipts stay live and the refund-due remainder
+    is recorded for the finance workflow. CLOSED sales are rejected (409).
+    """
+
+    result = cancellation.cancel_booking(
+        db,
+        admin,
+        booking_id,
+        payload.reason,
+        policy_check=payload.policy_check,
+    )
+    return SaleBookingCancelResponse(
+        booking_id=result.booking_id,
+        status=result.status,
+        stage=result.stage,
+        reason=result.reason,
+        policy_applied=result.policy_applied,
+        policy=result.policy,
+        free_window=result.free_window,
+        collected_paise=result.collected_paise,
+        fee_paise=result.fee_paise,
+        refund_due_paise=result.refund_due_paise,
+        refunds_issued_paise=result.refunds_issued_paise,
+        outstanding_paise=result.outstanding_paise,
+        unit_release=result.unit_release,
+        outbox_queued=result.outbox_queued,
+        cancelled_at=result.cancelled_at,
+    )
 
 
 @router.get("/{booking_id}/ledger", response_model=SaleLedgerResponse)

@@ -802,3 +802,47 @@ def availability_summary(session: Session, *, tenant_id: UUID, project_id: UUID)
     counts = {status_value.value: 0 for status_value in UnitStatus}
     counts.update(repository.availability_counts(session, project_id, tenant_id=tenant_id))
     return {"project_id": project_id, "counts": counts, "total": sum(counts.values())}
+
+
+def release_unit_for_cancellation(
+    session: Session,
+    *,
+    tenant_id: UUID,
+    unit_id: UUID,
+    actor_id: UUID,
+    reason: str,
+) -> dict:
+    """Release a booking-cancelled unit: BOOKED -> AVAILABLE (CANCELLATION edge).
+
+    Runs in the caller's transaction without committing, so the postsales
+    cancellation, the unit status, and its append-only event stay atomic.
+    A unit in any other status is reported unreleased and never overridden —
+    only the state machine's single CANCELLATION edge (BOOKED -> AVAILABLE)
+    is applied here.
+    """
+
+    unit = repository.get_unit(session, unit_id, tenant_id=tenant_id)
+    if unit is None:
+        return {"unit_id": str(unit_id), "released": False, "reason": "unit-not-found"}
+    from_status = unit.status
+    if from_status != UnitStatus.BOOKED.value:
+        return {
+            "unit_id": str(unit.id),
+            "released": False,
+            "from_status": from_status,
+            "reason": f"only BOOKED units are released by cancellation (unit is {from_status})",
+        }
+    _append_transition(
+        session,
+        unit=unit,
+        to_status=UnitStatus.AVAILABLE,
+        reason=reason,
+        source=UnitEventSource.CANCELLATION,
+        actor_id=actor_id,
+    )
+    return {
+        "unit_id": str(unit.id),
+        "released": True,
+        "from_status": from_status,
+        "to_status": UnitStatus.AVAILABLE.value,
+    }

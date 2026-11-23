@@ -140,6 +140,10 @@ class BookingCreateRequest(BaseModel):
 
     slot_id: UUID
     lead_id: UUID
+    contact_id: UUID | None = Field(
+        default=None,
+        description="Canonical contact (same tenant) for the visitor. Optional.",
+    )
     notes: str | None = Field(default=None, max_length=1000)
 
 
@@ -181,6 +185,10 @@ class BookingCustomScheduleRequest(BaseModel):
     lead_id: UUID
     start_time: datetime
     end_time: datetime
+    contact_id: UUID | None = Field(
+        default=None,
+        description="Canonical contact (same tenant) for the visitor. Optional.",
+    )
     notes: str | None = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
@@ -256,6 +264,7 @@ class BookingResponse(BaseModel):
     id: UUID
     slot_id: UUID
     lead_id: UUID
+    contact_id: UUID | None = None
     project_id: UUID
     buyer_id: UUID
     executive_id: UUID | None
@@ -285,6 +294,7 @@ class BookingResponse(BaseModel):
             id=booking.id,
             slot_id=booking.slot_id,
             lead_id=booking.lead_id,
+            contact_id=booking.contact_id,
             project_id=booking.project_id,
             buyer_id=booking.buyer_id,
             executive_id=booking.executive_id,

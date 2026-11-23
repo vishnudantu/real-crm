@@ -120,6 +120,7 @@ def create_booking(
     *,
     slot_id: UUID | str,
     lead_id: UUID | str,
+    contact_id: UUID | str | None = None,
     notes: str | None = None,
     expected_status: int = 201,
 ) -> dict[str, Any]:
@@ -129,6 +130,8 @@ def create_booking(
         "slot_id": str(slot_id),
         "lead_id": str(lead_id),
     }
+    if contact_id is not None:
+        payload["contact_id"] = str(contact_id)
     if notes is not None:
         payload["notes"] = notes
 
