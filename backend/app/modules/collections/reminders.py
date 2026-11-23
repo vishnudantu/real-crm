@@ -105,9 +105,6 @@ def queue_due_reminders(
                 select(Installment).where(
                     Installment.tenant_id == tenant_id,
                     Installment.due_on == target_due,
-                    # Only OPEN installments should trigger a payment reminder;
-                    # PAID/WAIVED are terminal and must never be chased.
-                    Installment.status.in_(postsales_repository.OPEN_INSTALLMENT_STATUSES),
                 )
             ).all()
         )
