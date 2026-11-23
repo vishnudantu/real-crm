@@ -78,6 +78,8 @@ class ProjectUpdateRequest(BaseModel):
     location: str | None = Field(default=None, min_length=2, max_length=255)
     description: str | None = Field(default=None, max_length=5000)
     rera_number: str | None = Field(default=None, max_length=64)
+    latitude: float | None = Field(default=None, ge=-90.0, le=90.0)
+    longitude: float | None = Field(default=None, ge=-180.0, le=180.0)
     status: ProjectStatus | None = None
 
     @field_validator("slug", mode="before")
@@ -113,6 +115,8 @@ class ProjectResponse(BaseModel):
     location: str
     description: str | None = None
     rera_number: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     status: ProjectStatus
     created_by: UUID
     created_at: datetime

@@ -45,6 +45,7 @@ from app.modules.projects import models as projects_models  # noqa: F401
 from app.modules.reconciliation import models as reconciliation_models  # noqa: F401
 from app.modules.service_desk import models as service_desk_models  # noqa: F401
 from app.modules.settings import models as settings_models  # noqa: F401
+from app.modules.solar import models as solar_models  # noqa: F401
 from app.modules.tenancy import models as tenancy_models  # noqa: F401
 from app.modules.tenant_ai import models as tenant_ai_models  # noqa: F401
 from app.modules.teamchat import models as teamchat_models  # noqa: F401
