@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { MessageSquare } from "lucide-react";
@@ -96,6 +97,17 @@ export function SalesConversationsPage() {
       setSelectedConversationId(conversations[0].id);
     }
   }, [selectedConversationId, conversations]);
+
+  // ── Deep link (?lead_id=...) from the My Day checklist ───────────────────
+  const [deepLinkParams] = useSearchParams();
+  const deepLinkLeadId = deepLinkParams.get("lead_id");
+  useEffect(() => {
+    if (!deepLinkLeadId) return;
+    const linked = conversations.find((conversation) => conversation.lead_id === deepLinkLeadId);
+    if (linked) {
+      handleSelectConversation(linked.id);
+    }
+  }, [deepLinkLeadId, conversations]);
 
   // ── Active conversation ───────────────────────────────────────────────────
   const activeConversation: SalesConversation | null = useMemo(() => {
