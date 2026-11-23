@@ -8,9 +8,11 @@ import {
 } from "../admin/sales/salesBookingUi";
 import { errorMessage } from "../shared/apiRequest";
 import { useModalFocus } from "../shared/useModalFocus";
+import { ArticleSuggestionsPanel } from "./ArticleSuggestionsPanel";
 import { fetchTicket, ticketKeys } from "./serviceDeskApi";
 import { TicketActionsPanel, TicketCommentThread } from "./TicketActionsPanel";
 import {
+  csatStars,
   isSlaBreached,
   slaCountdownLabel,
   ticketCategoryLabel,
@@ -115,6 +117,16 @@ export function TicketDetailDrawer({ ticketId, staffUsers, onClose }: TicketDeta
                   {ticket.resolved_at && (
                     <MetaRow label="Resolved at" value={formatDateTime(ticket.resolved_at)} />
                   )}
+                  {ticket.status === "CLOSED" && (
+                    <MetaRow
+                      label="CSAT"
+                      value={
+                        ticket.satisfaction?.rating
+                          ? csatStars(ticket.satisfaction.rating)
+                          : "Awaiting rating"
+                      }
+                    />
+                  )}
                   <MetaRow
                     label="Assigned to"
                     value={
@@ -159,7 +171,10 @@ export function TicketDetailDrawer({ ticketId, staffUsers, onClose }: TicketDeta
                   </h3>
                   <TicketCommentThread ticket={ticket} />
                 </section>
-                <TicketActionsPanel ticket={ticket} staffUsers={staffUsers} />
+                <div className="flex flex-col gap-5">
+                  <ArticleSuggestionsPanel ticketId={ticket.id} />
+                  <TicketActionsPanel ticket={ticket} staffUsers={staffUsers} />
+                </div>
               </div>
             </div>
           )}

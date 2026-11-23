@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -45,6 +46,11 @@ class TicketStatus(StrEnum):
     WAITING_ON_CUSTOMER = "WAITING_ON_CUSTOMER"
     RESOLVED = "RESOLVED"
     CLOSED = "CLOSED"
+
+
+class KbArticleStatus(StrEnum):
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"
 
 
 def utcnow() -> datetime:
@@ -110,6 +116,7 @@ class Ticket(TenantOwned, Base):
     sla_due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     first_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
@@ -125,6 +132,13 @@ class Ticket(TenantOwned, Base):
         passive_deletes=True,
         foreign_keys="TicketComment.ticket_id",
         order_by="TicketComment.created_at, TicketComment.id",
+    )
+    satisfaction: Mapped["TicketSatisfaction | None"] = relationship(
+        back_populates="ticket",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        foreign_keys="TicketSatisfaction.ticket_id",
     )
 
 
@@ -153,3 +167,78 @@ class TicketComment(TenantOwned, Base):
     )
 
     ticket: Mapped[Ticket] = relationship(back_populates="comments", foreign_keys=[ticket_id])
+
+
+class KbArticle(TenantOwned, Base):
+    """A tenant knowledge-base article.
+
+    Staff author articles in DRAFT and publish them; only PUBLISHED rows are
+    visible to buyers through the help-center surface. ``category`` is a plain
+    free-text string (kept deliberately simple — no category table), and
+    ``slug`` is unique per tenant for stable deep links.
+    """
+
+    __tablename__ = "kb_articles"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "slug", name="uq_kb_articles_tenant_slug"),
+        CheckConstraint(
+            f"status IN ({_quoted_values(KbArticleStatus)})", name="ck_kb_articles_status"
+        ),
+        CheckConstraint("length(trim(title)) BETWEEN 1 AND 255", name="ck_kb_articles_title"),
+        Index("ix_kb_articles_tenant_status", "tenant_id", "status"),
+        Index("ix_kb_articles_tenant_category", "tenant_id", "category"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(80), nullable=False)
+    body_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=KbArticleStatus.DRAFT.value,
+        server_default=KbArticleStatus.DRAFT.value,
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    author_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now(),
+        onupdate=utcnow,
+    )
+
+
+class TicketSatisfaction(TenantOwned, Base):
+    """A CSAT survey row for a closed ticket: 1-5 rating plus free text.
+
+    Exactly one row per ticket (enforced by the tenant+ticket unique key) is
+    opened when staff move a ticket to CLOSED; the buyer — or a staff member
+    on their behalf — may record one rating. Later submissions overwrite the
+    first so a customer can change their mind.
+    """
+
+    __tablename__ = "ticket_satisfaction"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "ticket_id", name="uq_ticket_satisfaction_tenant_ticket"),
+        CheckConstraint("rating BETWEEN 1 AND 5", name="ck_ticket_satisfaction_rating"),
+        CheckConstraint(
+            "feedback IS NULL OR length(feedback) <= 2000", name="ck_ticket_satisfaction_feedback"
+        ),
+        Index("ix_ticket_satisfaction_tenant_responded", "tenant_id", "responded_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    ticket_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
+    )
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    ticket: Mapped[Ticket] = relationship(back_populates="satisfaction", foreign_keys=[ticket_id])

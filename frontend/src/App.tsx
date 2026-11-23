@@ -87,6 +87,16 @@ const ServiceDeskPage = lazy(() =>
     default: module.ServiceDeskPage,
   })),
 );
+const KnowledgeBasePage = lazy(() =>
+  import("./servicedesk/KnowledgeBasePage").then((module) => ({
+    default: module.KnowledgeBasePage,
+  })),
+);
+const HelpCenterPage = lazy(() =>
+  import("./buyer/help/HelpCenterPage").then((module) => ({
+    default: module.HelpCenterPage,
+  })),
+);
 const ReconciliationPage = lazy(() =>
   import("./reconciliation/ReconciliationPage").then((module) => ({
     default: module.ReconciliationPage,
@@ -444,6 +454,10 @@ export default function App() {
                 element={<Suspense fallback={<RouteLoadingFallback />}><ServiceDeskPage /></Suspense>}
               />
               <Route
+                path="service-desk/knowledge"
+                element={<Suspense fallback={<RouteLoadingFallback />}><KnowledgeBasePage /></Suspense>}
+              />
+              <Route
                 path="reconciliation"
                 element={<Suspense fallback={<RouteLoadingFallback />}><ReconciliationPage /></Suspense>}
               />
@@ -502,6 +516,7 @@ export default function App() {
               <Route path="visits" element={<SiteVisitsPage />} />
               <Route path="project" element={<ProjectInfoPage />} />
               <Route path="documents" element={<BuyerDocumentsPage />} />
+              <Route path="help" element={<Suspense fallback={<RouteLoadingFallback />}><HelpCenterPage /></Suspense>} />
               <Route path="profile" element={<ProfilePage />} />
             </Route>
           </Route>

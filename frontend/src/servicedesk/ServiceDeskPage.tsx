@@ -19,9 +19,10 @@ import {
 import { errorMessage } from "../shared/apiRequest";
 import { ApprovalPagination } from "../approvals/ApprovalsUi";
 import { CreateTicketModal } from "./CreateTicketModal";
+import { CsatStatsCard } from "./CsatStatsCard";
 import { TicketDetailDrawer } from "./TicketDetailDrawer";
 import { fetchTickets, ticketKeys } from "./serviceDeskApi";
-import type { TicketItem, TicketPriority, TicketStatus } from "./serviceDeskModel";
+import type { CsatPeriod, TicketItem, TicketPriority, TicketStatus } from "./serviceDeskModel";
 import {
   TICKET_PRIORITIES,
   TICKET_STATUSES,
@@ -47,6 +48,7 @@ export function ServiceDeskPage() {
   const [openTicketId, setOpenTicketId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [csatPeriod, setCsatPeriod] = useState<CsatPeriod>("90d");
 
   const query = useQuery({
     queryKey: ticketKeys.list(page, PAGE_SIZE, status, priority, breachOnly, assignedToId),
@@ -116,6 +118,8 @@ export function ServiceDeskPage() {
           <span>New ticket</span>
         </button>
       </div>
+
+      <CsatStatsCard period={csatPeriod} onPeriodChange={setCsatPeriod} />
 
       <ServiceDeskFilters
         status={status}
