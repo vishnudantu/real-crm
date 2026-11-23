@@ -17,6 +17,7 @@ from app.modules.conversations.router import router as conversations_router
 from app.modules.customers.router import opportunities_router, router as customers_router
 from app.modules.dashboard.router import router as dashboard_router
 from app.modules.documents.router import router as documents_router
+from app.modules.executive.router import router as executive_router
 from app.modules.follow_ups.router import router as follow_ups_router
 from app.modules.handoffs.router import handoffs_router
 from app.modules.integrations.connections_router import router as integration_connections_router
@@ -88,3 +89,4 @@ api_router.include_router(widget_router)
 api_router.include_router(voice_intel_router)
 api_router.include_router(connect_dialer_router)
 api_router.include_router(solar_router)
+api_router.include_router(executive_router)
