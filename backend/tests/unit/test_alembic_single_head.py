@@ -44,7 +44,7 @@ def test_exactly_one_alembic_head() -> None:
     assert len(heads) == 1, f"expected one head, found {heads}"
 
 
-def test_head_is_kb_csat_migration() -> None:
+def test_head_is_city_intel_phase1_migration() -> None:
     revisions = _revisions()
     # Every referenced parent must exist — a dangling down_revision means the
     # chain cannot run on a fresh database.
@@ -55,5 +55,5 @@ def test_head_is_kb_csat_migration() -> None:
     assert not missing, f"dangling down_revision(s): {missing}"
     children = {down for down in revisions.values() if down is not None}
     heads = [revision for revision in revisions if revision not in children]
-    assert heads == ["4b8d2f6c91ae"]
-    assert len("e4c8a2f7b9d1") == 12
+    assert heads == ["c7a1f2d4e8b9"]
+    assert len("c7a1f2d4e8b9") == 12

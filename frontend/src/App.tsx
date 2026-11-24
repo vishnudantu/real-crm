@@ -39,6 +39,7 @@ import { OpportunityPipelinePage } from "./customers/OpportunityPipelinePage";
 import { InventoryMapPage } from "./inventory/InventoryMapPage";
 import { SunFacingPage } from "./solar/SunFacingPage";
 import { InventoryIntelligencePage } from "./inventoryIntelligence/InventoryIntelligencePage";
+import { CityIntelligencePage } from "./cityIntel/CityIntelligencePage";
 import { InventoryUnitsPage } from "./inventory/InventoryUnitsPage";
 import { DocumentsPage } from "./documents/DocumentsPage";
 import { TeamChatPage } from "./teamchat/TeamChatPage";
@@ -422,6 +423,7 @@ export default function App() {
               <Route path="inventory/units" element={<InventoryUnitsPage />} />
               <Route path="inventory/sun-facing" element={<SunFacingPage />} />
               <Route path="inventory/intelligence" element={<InventoryIntelligencePage />} />
+              <Route path="inventory/city-intelligence" element={<CityIntelligencePage />} />
               <Route path="visits" element={<VisitManagementPage />} />
               <Route path="analytics" element={<AnalyticsDashboardPage />} />
               <Route
