@@ -103,6 +103,11 @@ const ReconciliationPage = lazy(() =>
     default: module.ReconciliationPage,
   })),
 );
+const CollectionsPage = lazy(() =>
+  import("./collections/CollectionsPage").then((module) => ({
+    default: module.CollectionsPage,
+  })),
+);
 const HandoverPage = lazy(() =>
   import("./handover/HandoverPage").then((module) => ({ default: module.HandoverPage })),
 );
@@ -499,6 +504,10 @@ export default function App() {
               <Route
                 path="reconciliation"
                 element={<Suspense fallback={<RouteLoadingFallback />}><ReconciliationPage /></Suspense>}
+              />
+              <Route
+                path="collections"
+                element={<Suspense fallback={<RouteLoadingFallback />}><CollectionsPage /></Suspense>}
               />
               <Route
                 path="construction"

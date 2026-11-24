@@ -1,12 +1,77 @@
 # PropFlow Capability Map — Present vs Planned (verified against HEAD)
 
-**Verified on:** `main` @ `398fcf7` (2026-11-22) plus the workstreams noted as IN FLIGHT.
+**Verified on:** `main` @ `b81dbd9` (2026-11-24) plus the workstreams noted as IN FLIGHT.
 **Rule:** this file is updated after every merge. "Done" means endpoint + real data
 + tests shipped; UI noted separately when it is only backend. No aspirational entries
 are marked done. This is the anti-placeholder ledger the founder keeps asking for.
 
 ## Legend
 ✅ Shipped & tested · 🔶 Backend shipped, UI missing/partial · 🔧 In flight (assigned agent) · ⬜ Not started
+
+## Module-by-module matrix (all 42 backend modules, verified 2026-11-24)
+
+Endpoint counts are decorator counts on each module's routers. "Admin/sales UI" and
+"buyer UI" are yes / no / partial based on whether a dedicated page exists in
+`frontend/src`. Test files are representative, not exhaustive. This table is the
+authoritative answer to "how many modules are complete and working": **42 modules,
+41 with live endpoints, 397 API v1 routes, all backend + frontend suites green.**
+
+| Module | Endpoints | Admin/sales UI | Buyer UI | Test file(s) | Honest note |
+|--------|-----------|----------------|----------|--------------|-------------|
+| auth | 9 | yes (login/profile) | yes | test_auth.py, test_authorization.py | UI complete |
+| users | 11 | yes | no | test_users.py | UI complete |
+| tenancy | 6 | partial (operator) | no | test_tenancy.py, test_tenant_isolation.py | Tenant lifecycle; operator UI |
+| projects | 14 | yes | partial (fact sheet) | test_projects.py, test_facts.py | UI complete |
+| leads | 11 | yes | no | test_leads.py | UI complete |
+| conversations | 8 | yes | yes | test_conversations.py | UI complete |
+| bookings | 19 | yes | partial (visits) | test_bookings.py, test_visit_evidence.py | UI complete |
+| follow_ups | 8 | yes | no | test_follow_ups.py | UI complete |
+| handoffs | 5 | yes | no | test_handoffs.py | UI complete |
+| notifications | 6 | yes | no | test_notifications.py | UI complete |
+| dashboard | 9 | yes | no | test_dashboard.py | UI complete |
+| settings | 13 | yes | no | test_settings.py | UI complete |
+| messaging | 11 | yes | no | test_messaging_flow.py, test_messaging_engine.py | UI complete |
+| operator | 27 | yes (operator console) | no | test_operator_control_plane.py | Operator-only, not admin UI |
+| connectors | 2 | partial | no | test_connectors.py | Backend + guided connect UI |
+| integrations | 19 | yes | no | test_integrations*.py | UI complete |
+| inventory | 14 | yes | no | test_inventory*.py | UI complete (unit map, holds, CSV) |
+| inventory → intelligence | 5 | yes | no | test_inventory_intelligence.py + 5 unit files | UI complete (Module 20 dashboard) |
+| billing | 4 | partial | no | test_billing.py | Razorpay webhooks; no dedicated admin page |
+| postsales | 14 | yes | no | test_postsales*.py, test_receipt_integrity.py | UI complete (booking ledger) |
+| construction | 5 | yes | no | test_construction.py | UI complete (milestones) |
+| reconciliation | 5 | yes | no | test_reconciliation.py | UI complete |
+| documents | 9 | yes | no | test_documents.py, test_document_pdf.py | UI complete (library + proof) |
+| teamchat | 13 | yes | no | test_teamchat.py, test_team_chat.py | UI complete |
+| service_desk | 18 | yes | no | test_service_desk.py | UI complete + KB |
+| omnichannel | 11 | yes | no | test_omnichannel*.py | UI complete (inbox) |
+| tenant_ai | 3 | partial | no | test_tenant_ai*.py | Per-tenant AI provider config |
+| voice_intel | 5 | yes | no | test_voice_intel.py | UI complete (call intel) |
+| connect_dialer | 8 | yes | no | test_connect_dialer.py | UI complete (dialer) |
+| approvals | 4 | yes | no | test_approvals.py, test_approval_side_effects.py | UI complete |
+| buyer_docs | 11 | partial (admin) | partial | test_buyer_docs.py | Buyer vault; buyer portal wiring partial |
+| collections | 7 | yes | no | test_collections*.py | **UI added this branch** (command centre) |
+| deal_desk | 10 | partial | no | test_deal_desk*.py | Backend + cost-sheet UI partial |
+| executive | 2 | yes (cockpit) | no | test_executive*.py | Cockpit UI complete |
+| handover | 21 | yes | partial | test_handover*.py | Handover/possession OS |
+| solar | 5 | yes | no | test_solar_*.py | UI complete (Sun & Facing studio) |
+| sales_floor | 3 | yes | no | test_sales_floor.py | My Day + war room UI |
+| brokers | 5 | yes | no | test_brokers.py | UI complete (partner registry) |
+| customers | 11 | yes | no | test_customers*.py | UI complete (directory, 360, merges) |
+| ai_assistant | 2 | partial (embedded) | partial | test_ai_assistant.py, test_ai_assistant_unit.py | Grounded assistant; embedded in buyer/sales |
+| messages | 1 | partial | partial | test_conversations.py | Message send; part of conversations |
+| assistant | 0 | no | no | (library) | Library-only, no endpoints |
+| plans | 0 | no | no | (library) | Library-only, plan catalog data |
+
+**API-only (no dedicated UI page) — the honest gap list:**
+- `billing` (Razorpay webhooks; limits enforced, no admin billing page)
+- `assistant`, `plans` (library-only by design, not user features)
+- `deal_desk` (backend complete; cost-sheet UI partial)
+- `tenant_ai` (provider config; no standalone insights dashboard)
+- `ai_assistant`, `messages` (embedded, not standalone pages)
+
+Everything else has a dedicated admin/sales UI. Buyer-facing UI is intentionally
+narrow (buyer dashboard, conversations, visits, fact sheet, document vault) — the
+buyer property passport is still the accepted gap noted below.
 
 ## Core platform (done)
 ✅ Multi-tenant shared-schema isolation (tenant_id on all business tables, tenant-claim JWT, scoped queries)

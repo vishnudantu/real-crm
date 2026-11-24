@@ -98,6 +98,7 @@ const NAVIGATION_DEFINITIONS: readonly NavigationGroupDefinition[] = [
       { label: "Sales Bookings", shortLabel: "Bookings", to: "/admin/sales-bookings", feature: "post_sales" },
       { label: "Documents", shortLabel: "Documents", to: "/admin/documents" },
       { label: "Bank Reconciliation", shortLabel: "Reconciliation", to: "/admin/reconciliation" },
+      { label: "Collections", shortLabel: "Collections", to: "/admin/collections" },
     ],
   },
   {
