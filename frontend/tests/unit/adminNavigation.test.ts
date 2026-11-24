@@ -33,7 +33,7 @@ test("keeps core navigation in stable labeled groups when all optional features 
     ["/admin/approvals", "/admin/service-desk", "/admin/service-desk/knowledge", "/admin/call-intelligence"],
     ["/admin/inventory", "/admin/inventory/units", "/admin/inventory/sun-facing", "/admin/inventory/intelligence"],
     ["/admin/teamchat", "/admin/users"],
-    ["/admin/cockpit", "/admin/documents", "/admin/reconciliation"],
+    ["/admin/cockpit", "/admin/documents", "/admin/reconciliation", "/admin/collections"],
     ["/admin/settings", "/admin/audit-logs", "/admin/account"],
   ]);
 });
@@ -94,6 +94,7 @@ test("returns fresh groups and preserves ordering with every feature enabled", (
     "/admin/sales-bookings",
     "/admin/documents",
     "/admin/reconciliation",
+    "/admin/collections",
   ]);
 });
 
