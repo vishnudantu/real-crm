@@ -31,7 +31,7 @@ test("keeps core navigation in stable labeled groups when all optional features 
     ["/admin/projects", "/admin/visits", "/admin/construction", "/admin/handover"],
     ["/admin/customers", "/admin/opportunities", "/admin/brokers"],
     ["/admin/approvals", "/admin/service-desk", "/admin/service-desk/knowledge", "/admin/call-intelligence"],
-    ["/admin/inventory", "/admin/inventory/units", "/admin/inventory/sun-facing", "/admin/inventory/intelligence"],
+    ["/admin/inventory", "/admin/inventory/units", "/admin/inventory/sun-facing", "/admin/inventory/intelligence", "/admin/inventory/city-intelligence"],
     ["/admin/teamchat", "/admin/users"],
     ["/admin/cockpit", "/admin/documents", "/admin/reconciliation", "/admin/collections"],
     ["/admin/settings", "/admin/audit-logs", "/admin/account"],

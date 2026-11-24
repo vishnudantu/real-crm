@@ -103,6 +103,8 @@ def _build_permissions() -> tuple[PermissionDefinition, ...]:
         _permission("voice_intel", "write", "Enqueue and process call transcriptions.", admin),
         _permission("tenant_ai", "manage", "Configure the tenant's AI provider credentials.", admin),
         _permission("integrations", "manage", "Manage external integration connections and credentials.", admin),
+        _permission("city_intel", "read", "View locality demand, amenities, and locality reports.", admin, sales),
+        _permission("city_intel", "manage", "Curate project amenities and author locality reports.", admin),
         _permission("settings", "manage", "Manage tenant and system settings.", admin, grantable=False),
         _permission("users", "manage", "Provision users and manage their account status.", admin, grantable=False),
         _permission("roles", "manage", "Design and assign custom roles.", admin, grantable=False),
@@ -162,6 +164,8 @@ TENANT_AI_MANAGE = "tenant_ai.manage"
 INTEGRATIONS_MANAGE = "integrations.manage"
 DEAL_DESK_READ = "deal_desk.read"
 DEAL_DESK_MANAGE = "deal_desk.manage"
+CITY_INTEL_READ = "city_intel.read"
+CITY_INTEL_MANAGE = "city_intel.manage"
 
 # The exact keys whose routers now enforce require_permission instead of a
 # legacy role gate. The role designer UI reports enabled status from this set;
@@ -204,6 +208,8 @@ ENABLED_PERMISSION_KEYS = frozenset(
         INTEGRATIONS_MANAGE,
         DEAL_DESK_READ,
         DEAL_DESK_MANAGE,
+        CITY_INTEL_READ,
+        CITY_INTEL_MANAGE,
     }
 )
 

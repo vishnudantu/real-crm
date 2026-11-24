@@ -99,4 +99,5 @@ TENANT_TABLES = frozenset({
     "deal_desk_cost_sheets", "deal_desk_discount_matrix_bands", "deal_desk_quotes",
     "collection_reminders", "installment_promises",
     "handover_cases", "handover_snags", "handover_keys",
+    "project_amenities", "locality_reports",
 })
